@@ -65,11 +65,27 @@
 
 
 
+        <!-- ✅ Knife4j：使用已适配 springdoc 2.8.x 的 4.8.0 发布坐标 -->
         <dependency>
-            <groupId>com.github.xiaoymin</groupId>
+            <groupId>io.github.b18150228njupt</groupId>
             <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-            <version>4.4.0</version>
+            <version>4.8.0</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-reflect</artifactId>
+            <version>1.9.25</version>
+        </dependency>
+
+
+
+
 
 
 
