@@ -6,8 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class KeweiAiAgentApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(KeweiAiAgentApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(KeweiAiAgentApplication.class, args);
+    }
 
 }

@@ -1,1 +1,32 @@
-spring.application.name=kewei-ai-agent
+spring:
+  application:
+    name: kewei-ai-agent
+  profiles:
+    active: local,ollama
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: deepseek-r1:70b
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+# springdoc-openapi ??????
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.kiwi.keweiaiagent.controller
+# knife4j???????????????
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

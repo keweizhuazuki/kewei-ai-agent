@@ -1,3 +1,16 @@
+### CUSTOM ###
+application-local.yml
+application-*.local.yml
+application-*.local.yaml
+.env
+.env.*
+*.pem
+*.p12
+*.jks
+*.keystore
+src/main/java/com/kiwi/keweiaiagent/demo/invoke/TestApiKey.java
+
+
 HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
