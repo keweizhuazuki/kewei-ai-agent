@@ -1,4 +1,6 @@
 package com.kiwi.keweiaiagent.app;
+import com.kiwi.keweiaiagent.advisor.MyLoggerAdvisor;
+import com.kiwi.keweiaiagent.advisor.ReReadingAdvisor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -29,29 +31,28 @@ public class LoveApp {
     public LoveApp(ChatModel ollamaChatModel){
         chatMemory = MessageWindowChatMemory.builder()
                 .chatMemoryRepository(new InMemoryChatMemoryRepository())
-                .maxMessages(10) // 可选
+                .maxMessages(10)
                 .build();
 
         chatClient = ChatClient.builder(ollamaChatModel)
                 .defaultSystem(SYSTEM_PROMPT)
                 .defaultAdvisors(
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                        MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                        new MyLoggerAdvisor(),
+                        new ReReadingAdvisor()
                 )
                 .build();
     }
 
     public String doChat(String message, String chatId){
-        log.info("before memory({})={}", chatId, chatMemory.get(chatId));
         ChatResponse chatResponse = chatClient
                 .prompt()
                 .user(message)
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
                 .call()
                 .chatResponse();
-        log.info("after memory({})={}", chatId, chatMemory.get(chatId));
         assert chatResponse != null;
         String content = chatResponse.getResult().getOutput().getText();
-        log.info("chatId={}, message={}, content={}", chatId, message, content);
         return content;
     }
 }
