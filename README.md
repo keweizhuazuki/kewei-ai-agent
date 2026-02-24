@@ -356,6 +356,82 @@
 - 应用重启后保留历史上下文成为可能
 - 项目在可用性和后续扩展性上进一步提升
 
+## 8. 增加 MySQL 持久化记忆实现与可切换配置（ChatMemoryTableInitializer / MySqlChatMemory / ChatMemoryConfig）
+
+### 本阶段目标
+
+- 在文件持久化方案之外，增加基于 MySQL 的 `ChatMemory` 实现
+- 通过配置实现 `file` / `mysql` 两种记忆实现的切换
+- 为后续多实例部署、集中存储、数据分析提供数据库基础
+
+### 本阶段价值（为什么做）
+
+- 文件存储适合单机开发，但在多实例和运维场景下可扩展性有限
+- MySQL 方案便于统一管理会话数据、查询历史记录、做后续统计分析
+- 通过配置化切换存储实现，降低 `LoveApp` 等业务层对底层存储方式的耦合
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/ChatMemoryTableInitializer.java`
+  - 类：`ChatMemoryTableInitializer`
+  - 方法：
+    - `init()`：应用启动后自动执行建表 SQL（`ai_chat_memory_message`），确保 MySQL 记忆表存在
+  - 作用：
+    - 在 `app.chat-memory.type=mysql` 条件下自动初始化表结构
+    - 降低首次接入数据库记忆时的手工建表成本
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/MySqlChatMemory.java`
+  - 类：`MySqlChatMemory`（实现 `ChatMemory`）
+  - 方法：
+    - `add(String conversationId, Message message)`：追加单条消息
+    - `add(String conversationId, List<Message> messages)`：批量追加消息到数据库
+    - `get(String conversationId)`：按会话 ID 查询消息列表，并按主键升序恢复对话顺序
+    - `clear(String conversationId)`：按会话 ID 删除历史消息
+    - `serializeMessage(Message message)`：将 Spring AI 消息序列化为 JSON 字符串
+    - `deserializeMessage(String payloadJson)`：将数据库中的 JSON 反序列化为 Spring AI 消息
+    - `fromSpringMessage(Message message)`：将运行时消息转换为可存储结构
+    - `toSpringMessage(StoredMessage stored)`：将存储结构恢复为运行时消息
+  - 内部数据结构（内部类）：
+    - `StoredMessage`：数据库持久化载荷结构（类型、文本、元数据、工具调用/响应）
+    - `StoredToolCall`：持久化工具调用信息
+    - `StoredToolResponse`：持久化工具响应信息
+  - 作用：
+    - 使用 MyBatis-Plus Mapper 将每条会话消息落库
+    - 保持与 `FileBaseChatMemory` 一致的消息序列化/反序列化思路，便于维护
+- `src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java`
+  - 类：`ChatMemoryConfig`
+  - 方法：
+    - `chatMemory(...)`：根据配置项创建 `ChatMemory` Bean；支持 `mysql` / `file` 两种实现
+  - 作用：
+    - 将记忆实现选择逻辑集中到配置层
+    - 当 `type=mysql` 时注入 `MySqlChatMemory`，否则回退为 `FileBaseChatMemory`
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/entity/ChatMemoryMessageDO.java`
+  - 类：`ChatMemoryMessageDO`
+  - 字段（核心）：
+    - `id`：主键
+    - `conversationId`：会话 ID
+    - `payloadJson`：消息 JSON 内容
+    - `createTime` / `updateTime`：创建与更新时间
+  - 作用：
+    - 对应数据库表 `ai_chat_memory_message` 的 ORM 实体
+    - 承载会话消息持久化记录
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/mapper/ChatMemoryMessageMapper.java`
+  - 接口：`ChatMemoryMessageMapper`（继承 `BaseMapper<ChatMemoryMessageDO>`）
+  - 方法：
+    - 继承 `BaseMapper` 提供通用 CRUD 能力（未额外自定义方法）
+  - 作用：
+    - 为 `MySqlChatMemory` 提供数据库读写入口
+- `pom.xml`
+  - 本阶段涉及：
+    - 引入 MyBatis-Plus Spring Boot Starter（用于 Mapper 与实体持久化）
+  - 作用：
+    - 支撑 `ChatMemoryMessageMapper` 与 `MySqlChatMemory` 的数据库访问能力
+
+### 阶段结果
+
+- 会话记忆持久化方案从“仅文件”扩展为“文件 + MySQL”
+- 记忆实现已支持配置化切换，业务层无需感知底层存储细节
+- 为后续生产化部署与会话数据治理提供更稳妥基础
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -365,6 +441,7 @@
 - Advisor 链已支持自定义增强与共享上下文
 - 已开始引入结构化输出思路，为后续业务编排和扩展做准备
 - 会话记忆已向本地持久化方向演进（文件存储）
+- 会话记忆已扩展到 MySQL 持久化，并支持配置化切换存储实现
 
 ## 后续进度补充方式（约定）
 
