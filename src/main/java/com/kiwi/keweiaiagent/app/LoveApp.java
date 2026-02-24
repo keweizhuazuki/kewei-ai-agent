@@ -1,6 +1,7 @@
 package com.kiwi.keweiaiagent.app;
 import com.kiwi.keweiaiagent.advisor.MyLoggerAdvisor;
 import com.kiwi.keweiaiagent.advisor.ReReadingAdvisor;
+import com.kiwi.keweiaiagent.chatmemory.FileBaseChatMemory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -32,10 +33,12 @@ public class LoveApp {
 
     @Autowired
     public LoveApp(ChatModel ollamaChatModel){
-        chatMemory = MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
-                .maxMessages(10)
-                .build();
+//        chatMemory = MessageWindowChatMemory.builder()
+//                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+//                .maxMessages(10)
+//                .build();
+        String fileDir = System.getProperty("user.dir")+"/tmp/chat-memory";
+        chatMemory = new FileBaseChatMemory(fileDir);
 
         chatClient = ChatClient.builder(ollamaChatModel)
                 .defaultSystem(SYSTEM_PROMPT)
@@ -77,12 +80,13 @@ public class LoveApp {
      * @param movies
      */
     public record ActorsFilms(String actor, List<String> movies){}
-    public ActorsFilms getActorsFilms(String actor){
+    public ActorsFilms getActorsFilms(String actor, String chatId){
         return chatClient
                 .prompt()
                 .user(u -> u
                         .text("Generate 5 movies for {actor}. Return actor and movies.")
                         .param("actor", actor))
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
                 .call()
                 .entity(ActorsFilms.class);
     }
