@@ -4,6 +4,7 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.UUID;
 
@@ -11,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 
 @SpringBootTest
+@ActiveProfiles({"local"})
 class LoveAppTest {
 
     @Resource
@@ -34,7 +36,9 @@ class LoveAppTest {
 
     @Test
     void testGetActorsFilms() {
-        LoveApp.ActorsFilms result = loveApp.getActorsFilms("Tom Hanks");
+        String chatId = UUID.randomUUID().toString();
+
+        LoveApp.ActorsFilms result = loveApp.getActorsFilms("Tom Hanks", chatId);
 
         Assertions.assertNotNull(result);
         Assertions.assertNotNull(result.actor());
