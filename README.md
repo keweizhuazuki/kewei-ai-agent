@@ -285,18 +285,76 @@
 
 ### 主要新增/涉及文件
 
-- 待补充（你后续告诉我本阶段实际新增/修改了哪些文件后，我来补全）
-  - 我会按以下维度补齐：
-    - 文件路径
-    - 类名
-    - 方法名
-    - 方法作用（例如：定义结构化输出对象、执行转换、校验字段、兼容普通文本输出等）
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段在该类中新增结构化输出相关能力：
+  - 记录类型（record）：
+    - `ActorsFilms(String actor, List<String> movies)`：用于承接“演员 + 电影列表”的结构化输出结果
+    - `LoveReport(String title, List<String> suggestions)`：用于承接“恋爱报告”的结构化输出结果
+  - 方法：
+    - `getActorsFilms(String actor, String chatId)`：通过 `ChatClient` 发起请求，并将模型输出直接转换为 `ActorsFilms` 对象
+      - 作用：作为结构化输出转换器的入门示例，验证模型结果可被稳定解析为 Java 对象
+    - `doChatWithReport(String message, String chatId)`：在普通对话基础上，要求模型输出“恋爱报告”结构，并转换为 `LoveReport`
+      - 作用：将结构化输出应用到实际业务场景，为后续前端展示/业务处理提供 JSON 友好结果
+- `src/test/java/com/kiwi/keweiaiagent/app/LoveAppTest.java`
+  - 本阶段新增/补充测试方法：
+    - `testGetActorsFilms()`：验证 `getActorsFilms(...)` 的结构化输出结果是否完整（演员名、电影列表、列表长度）
+    - `doChatWithReport()`：验证 `doChatWithReport(...)` 能返回 `LoveReport` 结构对象
+  - 作用：确保结构化输出能力在真实调用下可用，避免仅有方法但缺少验证
 
 ### 阶段结果
 
 - 普通对话能力开始具备结构化输出方向的设计基础
 - 为后续将 AI 输出接入业务流程提供更好的可扩展性
 - 项目从“能对话”进一步走向“能被程序稳定消费”
+
+## 7. 完成 FileBaseChatMemory（实现本地永久会话存储）
+
+### 本阶段目标
+
+- 实现基于文件的 `ChatMemory`（或记忆仓储）能力
+- 将原本偏内存态的会话记录落到本地文件，实现持久化
+- 为应用重启后的上下文恢复、多轮会话延续提供基础支持
+
+### 本阶段价值（为什么做）
+
+- 内存会话在服务重启后会丢失，不利于真实业务使用
+- 本地文件持久化实现成本较低，适合作为早期阶段的可靠方案
+- 为后续升级到数据库/对象存储/分布式缓存打下接口与抽象基础
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/FileBaseChatMemory.java`
+  - 类：`FileBaseChatMemory`（实现 `ChatMemory`）
+  - 方法：
+    - `FileBaseChatMemory(String base_DIR)`：初始化本地存储目录；目录不存在时自动创建
+    - `add(String conversationId, Message message)`：追加单条消息到指定会话
+    - `add(String conversationId, List<Message> messages)`：批量追加消息并持久化到文件
+    - `get(String conversationId)`：读取指定会话的全部消息（返回只读副本）
+    - `clear(String conversationId)`：清空指定会话（删除对应文件）
+    - `getOrCreateConversation(String conversationId)`：读取会话文件；不存在则创建空会话文件并返回空消息列表
+    - `saveConversation(String conversationId, List<Message> messages)`：将会话消息写入 JSON 文件（先写临时文件再替换，降低写入中断风险）
+    - `getConversationFile(String conversationId)`：根据会话 ID 生成安全文件名并定位会话文件
+    - `fromSpringMessage(Message message)`：将 Spring AI 消息对象转换为可落盘的存储对象
+    - `toSpringMessage(StoredMessage stored)`：将文件中的存储对象还原为 Spring AI 消息对象
+  - 内部数据结构（内部类）：
+    - `StoredMessage`：文件持久化用消息结构（类型、文本、元数据等）
+    - `StoredToolCall`：持久化 Assistant 的工具调用信息
+    - `StoredToolResponse`：持久化工具响应信息
+  - 作用：
+    - 将会话消息以 JSON 文件形式持久化到本地
+    - 支持普通消息与工具调用/工具响应消息的保存与恢复
+    - 为应用重启后恢复上下文提供基础能力
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段在该类中继续增强：
+    - 在构造方法中将 `chatMemory` 从内存实现切换为 `FileBaseChatMemory`
+    - 为本地会话文件指定存储目录（`tmp/chat-memory`）
+  - 作用：把文件持久化记忆真正接入 `ChatClient` 的对话链路，而不只是单独实现存储类
+
+### 阶段结果
+
+- 会话记忆能力从“运行期内存”升级为“本地文件持久化”
+- 应用重启后保留历史上下文成为可能
+- 项目在可用性和后续扩展性上进一步提升
 
 ## 当前里程碑总结
 
@@ -306,6 +364,7 @@
 - 接口层已具备统一响应与全局异常处理能力
 - Advisor 链已支持自定义增强与共享上下文
 - 已开始引入结构化输出思路，为后续业务编排和扩展做准备
+- 会话记忆已向本地持久化方向演进（文件存储）
 
 ## 后续进度补充方式（约定）
 
