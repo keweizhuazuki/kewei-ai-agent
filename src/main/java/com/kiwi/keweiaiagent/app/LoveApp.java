@@ -13,6 +13,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
 
 @Component
@@ -28,6 +30,7 @@ public class LoveApp {
             "恋爱状态询问沟通、习惯差异引发的矛盾；已婚状态询问家庭责任与亲属关系处理的问题。" +
             "引导用户详述事情经过、对方反应及自身想法，以便给出专属解决方案。";
 
+    @Autowired
     public LoveApp(ChatModel ollamaChatModel){
         chatMemory = MessageWindowChatMemory.builder()
                 .chatMemoryRepository(new InMemoryChatMemoryRepository())
@@ -44,6 +47,17 @@ public class LoveApp {
                 .build();
     }
 
+    LoveApp(ChatClient chatClient) {
+        this.chatClient = chatClient;
+        this.chatMemory = null;
+    }
+
+    /**
+     * AI 基础聊天接口，输入用户消息和会话ID，输出AI回复内容
+     * @param message
+     * @param chatId
+     * @return
+     */
     public String doChat(String message, String chatId){
         ChatResponse chatResponse = chatClient
                 .prompt()
@@ -55,4 +69,42 @@ public class LoveApp {
         String content = chatResponse.getResult().getOutput().getText();
         return content;
     }
+
+    /**
+     * 结构化输出转换器
+     * 示例：根据演员名字，生成5部电影
+     * @param actor
+     * @param movies
+     */
+    public record ActorsFilms(String actor, List<String> movies){}
+    public ActorsFilms getActorsFilms(String actor){
+        return chatClient
+                .prompt()
+                .user(u -> u
+                        .text("Generate 5 movies for {actor}. Return actor and movies.")
+                        .param("actor", actor))
+                .call()
+                .entity(ActorsFilms.class);
+    }
+
+    public record LoveReport(String title, List<String> suggestions){}
+    /**
+     * AI 聊天接口，在基础聊天的基础上增加了对AI回复内容的分析和总结，输出最终结果(实战结构化输出）
+     * @param message
+     * @param chatId
+     * @return
+     */
+    public LoveReport doChatWithReport(String message, String chatId){
+        LoveReport  loveReport = chatClient
+                .prompt()
+                .system(SYSTEM_PROMPT + "每次对话后都要生成恋爱结果，标题为{用户名}的恋爱报告，内容为建议列表")
+                .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .call()
+                .entity(LoveReport.class);
+        assert loveReport != null;
+        log.info("loveReport: {}", loveReport);
+        return loveReport;
+    }
+
 }

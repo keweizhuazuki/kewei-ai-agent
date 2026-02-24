@@ -31,4 +31,22 @@ class LoveAppTest {
         String answer3 = loveApp.doChat( message3,chatId);
         Assertions.assertNotNull(answer3);
     }
+
+    @Test
+    void testGetActorsFilms() {
+        LoveApp.ActorsFilms result = loveApp.getActorsFilms("Tom Hanks");
+
+        Assertions.assertNotNull(result);
+        Assertions.assertNotNull(result.actor());
+        Assertions.assertNotNull(result.movies());
+        Assertions.assertEquals(5, result.movies().size());
+    }
+
+    @Test
+    void doChatWithReport() {
+        String chatId = UUID.randomUUID().toString();
+        String message = "你好，我叫kiwi，我想让另一半（sjr）更爱我，但我不知道该怎么做";
+        LoveApp.LoveReport loveReport = loveApp.doChatWithReport(message, chatId);
+        Assertions.assertNotNull(loveReport);
+    }
 }
