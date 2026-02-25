@@ -13,9 +13,12 @@
 
 - 搭建 Spring Boot 项目基础运行环境
 - 接入阿里百炼与 Ollama 的 `ChatModel`
-- 初步使用 `ChatClient` 封装业务对话能力
+- 使用 `ChatClient` 封装业务对话能力（文本 / 多模态）
 - 统一接口响应格式与异常处理
 - 实现并串联自定义 Advisor（含链路共享状态）
+- 支持结构化输出（JSON -> Java 对象）
+- 支持多种会话记忆存储方案（`file` / `mysql` / `redis`）并通过 yml 切换
+- 支持基础 RAG（Markdown 文档加载、向量化、检索增强问答）
 
 ## 目录结构（当前）
 
@@ -24,13 +27,23 @@
 - `src/main/java/com/kiwi/keweiaiagent`
   - `KeweiAiAgentApplication`：Spring Boot 启动入口
 - `src/main/java/com/kiwi/keweiaiagent/app`
-  - `LoveApp`：对话业务封装（`ChatClient`、记忆、Advisor 链）
+  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、RAG、记忆、Advisor 链）
 - `src/main/java/com/kiwi/keweiaiagent/advisor`
   - `MyLoggerAdvisor`：记录请求与响应日志
   - `ReReadingAdvisor`：对用户输入进行增强，并向 Advisor 链上下文写入原始输入
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory`
+  - `FileBaseChatMemory`：基于本地文件的会话记忆持久化
+  - `MySqlChatMemory`：基于 MySQL 的会话记忆持久化
+  - `MyRedisChatMemory`：基于 Redis 的会话记忆持久化
+  - `ChatMemoryTableInitializer`：MySQL 记忆表初始化（自动建表）
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/entity`
+  - `ChatMemoryMessageDO`：会话消息数据库实体对象
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/mapper`
+  - `ChatMemoryMessageMapper`：会话消息表 Mapper（MyBatis-Plus）
 - `src/main/java/com/kiwi/keweiaiagent/common`
   - `BaseResponse`：统一响应体
 - `src/main/java/com/kiwi/keweiaiagent/config`
+  - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
   - `GlobalResponseBodyAdvice`：统一响应包装
   - `GlobalCorsConfig`：全局跨域配置
 - `src/main/java/com/kiwi/keweiaiagent/controller`
@@ -38,6 +51,9 @@
 - `src/main/java/com/kiwi/keweiaiagent/exception`
   - `BusinessException`：业务异常定义
   - `GlobalExceptionHandler`：全局异常处理器
+- `src/main/java/com/kiwi/keweiaiagent/rag`
+  - `LoveAppDocumentLoader`：加载并解析恋爱知识库 Markdown 文档
+  - `LoveAppVectorStoreConfig`：构建向量存储并导入知识库文档
 - `src/main/java/com/kiwi/keweiaiagent/demo/invoke`
   - `SdkAiInvoke`：阿里百炼 SDK 调用示例
   - `SpringAiAiInvoke`：Spring AI + DashScope 调用示例
@@ -45,9 +61,11 @@
   - `DebugBeans`：调试 `ChatModel` Bean 注册情况
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/resources`
-  - `application.yml`：应用、端口、Profile、AI 模型与接口文档配置
+  - `application.yml`：应用、端口、Profile、AI 模型、记忆方式切换与接口文档配置
 - `src/test/java/com/kiwi/keweiaiagent`
-  - 应用启动测试、`LoveApp` 对话能力测试
+  - 应用启动测试、`LoveApp` 对话能力测试（文本 / 结构化 / 多模态 / RAG）
+- `src/test/java/com/kiwi/keweiaiagent/rag`
+  - `LoveAppDocumentLoaderTest`：知识库 Markdown 文档加载测试
 
 ## 进度记录
 
@@ -540,6 +558,66 @@
 - 多模态场景已接入统一 `ChatClient`、Advisor 链与记忆体系
 - 为后续更复杂的视觉理解与业务化场景拓展提供基础能力
 
+## 11. 新增文档读取与 RAG 检索问答（doChatWithRag）
+
+### 本阶段目标
+
+- 增加恋爱知识库文档读取能力（Markdown 文档）
+- 构建向量存储并完成文档向量化入库（内存向量库）
+- 在 `LoveApp` 中新增 RAG 问答方法，实现“对话 + 检索增强生成”
+
+### 本阶段价值（为什么做）
+
+- 仅依赖模型通用知识，回答不一定贴合业务场景
+- RAG 能把回答约束在自有知识库内容上，提升相关性与可控性
+- 为后续接入更大规模知识库、外部文档源、持久化向量库提供实现模板
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段新增字段：
+    - `loveAppVectorStore`（`VectorStore`）：恋爱知识库向量存储实例
+  - 本阶段新增方法：
+    - `doChatWithRag(String message, String chatId)`：在普通对话流程基础上挂载 `QuestionAnswerAdvisor`，基于向量检索结果生成回答
+      - 作用：
+        - 复用已有 `ChatClient`、会话记忆与 `CONVERSATION_ID`
+        - 在回答前通过 `QuestionAnswerAdvisor` 使用 `loveAppVectorStore` 做检索增强
+        - 返回最终模型文本回复
+- `src/main/java/com/kiwi/keweiaiagent/rag/LoveAppDocumentLoader.java`
+  - 类：`LoveAppDocumentLoader`
+  - 方法：
+    - `LoveAppDocumentLoader(Resource[] resources)`：注入 `classpath:documents/*.md` 下的知识库文档资源
+    - `loadMarkdown()`：读取并解析所有 Markdown 文档为 `Document` 列表
+  - 作用：
+    - 使用 `MarkdownDocumentReader` 将 Markdown 拆分为可向量化的文档片段
+    - 配置读取选项（如分隔策略、是否包含代码块/引用块）
+    - 为每个文档片段补充元数据（如 `filename`、`source`），便于后续追踪来源
+- `src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java`
+  - 类：`LoveAppVectorStoreConfig`
+  - 方法：
+    - `loveAppVectorStore(EmbeddingModel ollamaEmbeddingModel)`：创建 `VectorStore` Bean，加载文档并写入向量库
+  - 作用：
+    - 基于 `EmbeddingModel` 构建 `SimpleVectorStore`
+    - 在应用启动阶段完成知识库文档的向量化导入
+    - 为 `LoveApp#doChatWithRag(...)` 提供可注入的向量检索能力
+- `src/test/java/com/kiwi/keweiaiagent/rag/LoveAppDocumentLoaderTest.java`
+  - 类：`LoveAppDocumentLoaderTest`
+  - 方法：
+    - `loadMarkdown()`：验证 Markdown 文档加载流程可执行
+  - 作用：
+    - 用测试确认知识库文档可被读取和解析（作为 RAG 前置能力验证）
+- `src/test/java/com/kiwi/keweiaiagent/app/LoveAppTest.java`
+  - 本阶段新增测试方法：
+    - `doChatWithRag()`：验证 `LoveApp#doChatWithRag(...)` 能返回检索增强后的问答结果
+  - 作用：
+    - 验证 RAG 问答入口已经接入成功（检索 + 生成链路打通）
+
+### 阶段结果
+
+- 项目具备了基础 RAG 能力（文档读取、向量化、检索增强问答）
+- `LoveApp` 新增面向业务的 RAG 问答方法，可直接用于知识库问答场景
+- 为后续扩展文档类型、向量数据库和检索策略打下基础
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -552,6 +630,7 @@
 - 会话记忆已扩展到 MySQL 持久化，并支持配置化切换存储实现
 - 会话记忆已新增 Redis 实现，并形成 `file/mysql/redis` 三种可切换方案
 - 已支持图片输入的多模态对话能力（`doChatWithImage`）
+- 已具备基础 RAG 能力（文档读取、向量化入库、检索增强问答）
 
 ## 后续进度补充方式（约定）
 
