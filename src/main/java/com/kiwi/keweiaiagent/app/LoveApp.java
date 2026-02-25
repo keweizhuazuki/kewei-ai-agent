@@ -8,7 +8,9 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.MimeTypeUtils;
 
 import java.util.List;
 
@@ -60,6 +62,24 @@ public class LoveApp {
         ChatResponse chatResponse = chatClient
                 .prompt()
                 .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .call()
+                .chatResponse();
+        assert chatResponse != null;
+        String content = chatResponse.getResult().getOutput().getText();
+        return content;
+    }
+
+    /**
+     * AI 基础聊天接口，输入用户消息和会话ID，输出AI回复内容
+     * @param message
+     * @param chatId
+     * @return
+     */
+    public String doChatWithImage(String message, String chatId, String imagePath){
+        ChatResponse chatResponse = chatClient
+                .prompt()
+                .user(u -> u.text(message).media(MimeTypeUtils.IMAGE_PNG,new ClassPathResource(imagePath)))
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
                 .call()
                 .chatResponse();
