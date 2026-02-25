@@ -64,4 +64,13 @@ class LoveAppTest {
         String answer1 = loveApp.doChatWithImage(message1, chatId, "static/images/test.png");
         Assertions.assertNotNull(answer1);
     }
+
+    @Test
+    void doChatWithRag() {
+
+        String chatId = UUID.randomUUID().toString();
+        String message = "结婚后怎么分家务";
+        String s = loveApp.doChatWithRag(message, chatId);
+        Assertions.assertNotNull(s);
+    }
 }

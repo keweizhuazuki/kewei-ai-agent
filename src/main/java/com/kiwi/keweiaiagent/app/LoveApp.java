@@ -1,12 +1,15 @@
 package com.kiwi.keweiaiagent.app;
 import com.kiwi.keweiaiagent.advisor.MyLoggerAdvisor;
 import com.kiwi.keweiaiagent.advisor.ReReadingAdvisor;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -124,6 +127,26 @@ public class LoveApp {
         assert loveReport != null;
         log.info("loveReport: {}", loveReport);
         return loveReport;
+    }
+
+
+    /**
+     * 恋爱知识库问答功能
+     */
+
+    @Resource
+    private VectorStore loveAppVectorStore;
+
+    public String doChatWithRag(String message, String chatId){
+        ChatResponse chatResponse = chatClient
+                .prompt()
+                .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .advisors(QuestionAnswerAdvisor.builder(loveAppVectorStore).build())
+                .call()
+                .chatResponse();
+        assert chatResponse != null;
+        return chatResponse.getResult().getOutput().getText();
     }
 
 }
