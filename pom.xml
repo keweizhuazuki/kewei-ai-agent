@@ -73,6 +73,11 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Align victools jsonschema dependencies to avoid runtime NoClassDefFoundError in Spring AI BeanOutputConverter -->
         <dependency>
             <groupId>com.github.victools</groupId>
