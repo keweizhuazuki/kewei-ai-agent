@@ -432,6 +432,69 @@
 - 记忆实现已支持配置化切换，业务层无需感知底层存储细节
 - 为后续生产化部署与会话数据治理提供更稳妥基础
 
+## 9. 新增 MyRedisChatMemory，完善 ChatMemoryConfig（支持通过 yml 一键切换记忆化方式）
+
+### 本阶段目标
+
+- 新增基于 Redis 的 `ChatMemory` 实现
+- 继续完善 `ChatMemoryConfig`，支持 `file` / `mysql` / `redis` 三种记忆方式切换
+- 通过 yml 配置项实现低成本切换，无需改业务代码
+
+### 本阶段价值（为什么做）
+
+- Redis 适合高频读写、低延迟场景，适合作为会话记忆存储方案
+- 相比文件和 MySQL，Redis 在短时对话上下文读取性能上更有优势
+- 通过配置切换存储实现，进一步提升项目在不同环境下的适配能力（本地开发 / 测试 / 服务部署）
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/MyRedisChatMemory.java`
+  - 类：`MyRedisChatMemory`（实现 `ChatMemory`）
+  - 方法：
+    - `MyRedisChatMemory(StringRedisTemplate stringRedisTemplate, String keyPrefix)`：初始化 Redis 模板与 key 前缀配置
+    - `add(String conversationId, Message message)`：追加单条消息
+    - `add(String conversationId, List<Message> messages)`：批量追加消息到 Redis List
+    - `get(String conversationId)`：从 Redis 读取指定会话的全部消息并反序列化恢复
+    - `clear(String conversationId)`：删除指定会话的 Redis Key
+    - `buildKey(String conversationId)`：构造会话对应的 Redis Key（前缀 + 会话 ID）
+    - `serializeMessage(Message message)`：将 Spring AI 消息序列化为 JSON 字符串
+    - `deserializeMessage(String payloadJson)`：将 Redis 中的 JSON 反序列化为 Spring AI 消息
+    - `fromSpringMessage(Message message)`：将运行时消息转换为可存储结构
+    - `toSpringMessage(StoredMessage stored)`：将存储结构恢复为运行时消息
+  - 内部数据结构（内部类）：
+    - `StoredMessage`：Redis 持久化载荷结构（类型、文本、元数据、工具调用/响应）
+    - `StoredToolCall`：持久化工具调用信息
+    - `StoredToolResponse`：持久化工具响应信息
+  - 作用：
+    - 使用 Redis List 保存会话消息序列，保持消息顺序
+    - 延续与文件/MySQL 方案一致的序列化模型，便于维护和切换
+- `src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java`
+  - 类：`ChatMemoryConfig`（本阶段增强）
+  - 方法：
+    - `mysqlChatMemory(...)`：当 `app.chat-memory.type=mysql` 时装配 `MySqlChatMemory`
+    - `redisChatMemory(...)`：当 `app.chat-memory.type=redis` 时装配 `MyRedisChatMemory`，并支持 `key-prefix` 配置
+    - `fileChatMemory(...)`：作为兜底方案，在未命中其他 `ChatMemory` Bean 时装配 `FileBaseChatMemory`
+  - 作用：
+    - 通过条件装配 + 缺省兜底，实现记忆方式的一键切换
+    - 将选择逻辑从“代码判断”升级为“Spring 配置驱动”
+- `pom.xml`
+  - 本阶段涉及：
+    - 引入 `spring-boot-starter-data-redis`
+  - 作用：
+    - 提供 `StringRedisTemplate` 等 Redis 访问能力，支撑 `MyRedisChatMemory`
+- `src/main/resources/application.yml`（或对应环境配置文件）
+  - 本阶段配置约定：
+    - 通过 `app.chat-memory.type` 切换记忆实现（如 `file` / `mysql` / `redis`）
+    - Redis 方案支持 `app.chat-memory.redis.key-prefix` 配置 Key 前缀
+  - 作用：
+    - 实现“改配置即切换”的使用方式，减少代码改动
+
+### 阶段结果
+
+- 会话记忆方案扩展为“文件 + MySQL + Redis”
+- 记忆实现选择全面配置化，可通过 yml 快速切换
+- 为不同环境下的性能、持久化与运维需求提供更灵活的方案选择
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -442,6 +505,7 @@
 - 已开始引入结构化输出思路，为后续业务编排和扩展做准备
 - 会话记忆已向本地持久化方向演进（文件存储）
 - 会话记忆已扩展到 MySQL 持久化，并支持配置化切换存储实现
+- 会话记忆已新增 Redis 实现，并形成 `file/mysql/redis` 三种可切换方案
 
 ## 后续进度补充方式（约定）
 
