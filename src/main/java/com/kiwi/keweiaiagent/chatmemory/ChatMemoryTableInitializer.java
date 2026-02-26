@@ -2,15 +2,19 @@ package com.kiwi.keweiaiagent.chatmemory;
 
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "app.chat-memory", name = "type", havingValue = "mysql")
+@ConditionalOnBean(name = "mysqlChatMemoryJdbcTemplate")
 @RequiredArgsConstructor
 public class ChatMemoryTableInitializer {
 
+    @Qualifier("mysqlChatMemoryJdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
 
     @PostConstruct

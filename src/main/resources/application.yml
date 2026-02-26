@@ -8,11 +8,20 @@ spring:
       base-url: http://localhost:11434
       chat:
         options:
-          model: deepseek-r1:70b
+          model: qwen3-vl:latest
+    vectorstore:
+      pgvector:
+      index-type: HNSW
+      distance-type: COSINE_DISTANCE
+      dimensions: 1536
+      max-document-batch-size: 10000 # Optional: Maximum number of documents per batch
+
+
 server:
   port: 8123
   servlet:
     context-path: /api
+
 # springdoc-openapi ??????
 springdoc:
   swagger-ui:
