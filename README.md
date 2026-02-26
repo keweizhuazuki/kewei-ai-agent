@@ -20,6 +20,7 @@
 - 支持多种会话记忆存储方案（`file` / `mysql` / `redis`）并通过 yml 切换
 - 支持基础 RAG（Markdown 文档加载、向量化、检索增强问答）
 - 为 `pgvector + RAG` 实操完成配置准备（含多数据源与 AI Bean 冲突处理）
+- 跑通 `pgvector + RAG` 检索链路（含 PgVector 数据源区分与测试验证）
 
 ## 目录结构（当前）
 
@@ -47,6 +48,7 @@
   - `AiModelPrimaryConfig`：指定默认 AI 模型/Embedding Bean 优先级（解决多 Provider 并存冲突）
   - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
   - `ChatMemoryMySqlDataSourceConfig`：ChatMemory 专用 MySQL 数据源与 MyBatis 配置
+  - `PgVectorPrimaryDataSourceConfig`：PgVector 使用的 PostgreSQL 主数据源与 `JdbcTemplate` 配置
   - `GlobalResponseBodyAdvice`：统一响应包装
   - `GlobalCorsConfig`：全局跨域配置
 - `src/main/java/com/kiwi/keweiaiagent/controller`
@@ -694,12 +696,115 @@
     - 避免 Mapper 被默认数据源错误扫描/绑定
     - 确保 ChatMemory Mapper 明确走 ChatMemory 专用 MySQL 配置链路
 
+### 踩坑记录
+
+- 问题 1：同时引入 Ollama 与 Spring AI Alibaba 后，出现多个 AI Bean 候选（`ChatModel` / `EmbeddingModel`）
+  - 现象：
+    - 自动装配在某些场景下无法稳定判断该使用哪个模型 Bean（尤其向量存储相关配置会更早参与装配）
+  - 原因：
+    - 类路径上同时存在多个 Provider，导致同类型 Bean 数量 > 1
+  - 处理方式：
+    - 新增 `AiModelPrimaryConfig`
+    - 在 Bean 定义阶段将 `ollamaChatModel`、`ollamaEmbeddingModel` 标记为 `primary`
+  - 收获：
+    - 不需要删除其他 Starter，后续切换默认 Provider 也只需调整配置类中的 bean 名称
+
+- 问题 2：项目同时存在 PostgreSQL（主数据源 / pgvector）和 MySQL（ChatMemory），Mapper/JdbcTemplate 容易绑错
+  - 现象：
+    - ChatMemory 建表或 Mapper 扫描可能误走主数据源
+    - 不同环境下若某个数据源配置缺失，容易触发无效装配或启动异常
+  - 原因：
+    - 多数据源场景下默认自动装配行为不够明确，缺少专用限定与条件启用
+  - 处理方式：
+    - 新增 `ChatMemoryMySqlDataSourceConfig`，为 ChatMemory 单独配置 MySQL `DataSource` / `JdbcTemplate` / MyBatis `SqlSessionFactory`
+    - `ChatMemoryTableInitializer` 使用 `@Qualifier("mysqlChatMemoryJdbcTemplate")` 并增加 `@ConditionalOnBean`
+    - `ChatMemoryMessageMapper` 移除 `@Mapper`，改由专用 `@MapperScan` 托管
+    - 通过 `@ConditionalOnProperty` 实现按 `app.chat-memory.type` 动态开启
+  - 收获：
+    - 主数据源与 ChatMemory 数据源职责明确，配置切换时更稳定
+    - 为第十三步接入 `pgvector` 主数据源和 `JdbcTemplate` 优先级处理打下基础
+
 ### 阶段结果
 
 - 已完成 `pgvector + RAG` 实操前的关键配置准备工作
 - 多 AI Provider 并存的默认模型选择问题得到处理
 - 多数据源场景下的 ChatMemory MySQL 配置已独立并支持条件启用
 - 项目在复杂配置场景下的可维护性与可扩展性进一步提升
+
+## 13. 添加 PgVectorPrimaryDataSourceConfig，跑通 pgvector + RAG 检索（含踩坑记录）
+
+### 本阶段目标
+
+- 为 PgVectorStore 提供明确的 PostgreSQL 主数据源与 `JdbcTemplate`
+- 避免 PgVector 与 ChatMemory（MySQL）在多数据源场景下混用 `JdbcTemplate`
+- 在测试中验证 `pgvector` 向量写入、相似度检索以及 `LoveApp` 的 RAG 问答链路可用
+
+### 本阶段价值（为什么做）
+
+- `pgvector` 落地后，RAG 从内存向量库演进到数据库向量库，结果更贴近实际部署形态
+- 明确数据源优先级可以减少自动装配误判导致的问题，提升稳定性
+- 通过测试跑通“向量写入 + 检索 + RAG问答”，为后续迭代提供可靠基线
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/config/PgVectorPrimaryDataSourceConfig.java`
+  - 类：`PgVectorPrimaryDataSourceConfig`
+  - 条件：
+    - `spring.datasource.url` 存在时启用
+  - 方法：
+    - `dataSourceProperties()`：读取 `spring.datasource` 配置并声明为 `@Primary`
+    - `dataSource(...)`：创建 PostgreSQL 主数据源并声明为 `@Primary`
+    - `jdbcTemplate(...)`：创建 PostgreSQL 主 `JdbcTemplate` 并声明为 `@Primary`
+  - 作用：
+    - 为 PgVectorStore 提供明确的 PostgreSQL JDBC 访问入口
+    - 与 ChatMemory 的 MySQL 专用数据源配置形成职责分离（通过 `@Primary` + `@Qualifier` 区分）
+- `src/test/java/com/kiwi/keweiaiagent/app/LoveAppTest.java`
+  - 本阶段新增/增强测试内容：
+    - `testVectorStore()`：直接使用 `PgVectorStore` 写入文档并执行相似度检索，验证 pgvector 链路可用
+    - `doChatWithRag()`：在当前配置下验证基于 RAG 的问答能力继续可用（作为 pgvector + RAG 的业务入口验证）
+  - 相关注入：
+    - `@Qualifier("vectorStore") private PgVectorStore pgVectorStore`：显式注入 PgVector 实现
+  - 作用：
+    - 验证底层向量存储能力（增/检）
+    - 验证上层业务问答入口在 pgvector 场景下可正常工作
+- `src/main/resources/application.yml`
+  - 本阶段新增/调整：
+    - Ollama `embedding` 模型配置调整为 `mxbai-embed-large:latest`
+    - `spring.ai.vectorstore.pgvector.dimensions` 调整为 `1024`
+    - 保留 `index-type: HNSW` 配置并使其与 embedding 维度兼容
+  - 作用：
+    - 解决 embedding 维度与 pgvector HNSW 索引限制不兼容问题
+    - 为 pgvector 检索性能与可用性提供稳定配置基础
+
+### 踩坑记录
+
+- 问题 1：PgVector 也依赖 JDBC，但项目里已经存在 MySQL 的 `JdbcTemplate`
+  - 现象：
+    - 自动装配可能优先拿到 MySQL 的 `JdbcTemplate`，导致 PgVector 相关组件走错数据源
+  - 原因：
+    - 多数据源场景下未明确 PostgreSQL 数据源/JdbcTemplate 的主优先级
+  - 处理方式：
+    - 新增 `PgVectorPrimaryDataSourceConfig`
+    - 将 PostgreSQL 的 `DataSourceProperties` / `DataSource` / `JdbcTemplate` 标记为 `@Primary`
+    - 同时让 ChatMemory 继续通过专用 `@Qualifier` 使用 MySQL 数据源
+
+- 问题 2：Embedding 模型维度与 `HNSW` 索引限制不兼容
+  - 现象：
+    - 之前使用的 embedding 模型维度为 `4096`，而当前 `index-type: HNSW` 场景下最多支持约 `2000` 列（维度）
+  - 可选方案：
+    - 去掉索引（不使用 HNSW）
+    - 更换 embedding 模型（降低维度）
+  - 最终处理：
+    - 将 embedding 模型切换为 `mxbai-embed-large`
+    - 对应维度调整为 `1024`
+    - 保留 `HNSW` 索引配置，最终跑通 pgvector 检索
+
+### 阶段结果
+
+- 已完成 PgVector 使用的 PostgreSQL 主数据源与 `JdbcTemplate` 配置
+- 多数据源场景下 PgVector（PostgreSQL）与 ChatMemory（MySQL）职责分离更清晰
+- `LoveAppTest` 已验证 pgvector 向量检索与 RAG 问答链路可用
+- `pgvector + RAG` 实操链路已成功跑通
 
 ## 当前里程碑总结
 
@@ -715,6 +820,7 @@
 - 已支持图片输入的多模态对话能力（`doChatWithImage`）
 - 已具备基础 RAG 能力（文档读取、向量化入库、检索增强问答）
 - 已完成 `pgvector + RAG` 实操前的配置治理（AI Bean 优先级、多数据源拆分、条件化启用）
+- 已跑通 `pgvector + RAG` 检索与问答链路（含多数据源/JDBC 冲突处理与维度适配）
 
 ## 后续进度补充方式（约定）
 
