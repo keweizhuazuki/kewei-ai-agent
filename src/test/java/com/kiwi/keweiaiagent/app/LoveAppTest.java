@@ -3,9 +3,19 @@ package com.kiwi.keweiaiagent.app;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -72,5 +82,24 @@ class LoveAppTest {
         String message = "结婚后怎么分家务";
         String s = loveApp.doChatWithRag(message, chatId);
         Assertions.assertNotNull(s);
+    }
+
+    @Autowired
+    @Qualifier("vectorStore")
+    private PgVectorStore pgVectorStore;
+
+
+    @Test
+    void testVectorStore(){
+        List<Document> documents = List.of(
+                new Document("zkkw 是最强的", Map.of("meta1", "value1")),
+                new Document("zkkw 是最帅的", Map.of("meta2", "value2")),
+                new Document("zkkw 创办的网站 baidu.com 搜索网址是世界第一", Map.of("meta3", "value3")));
+
+        pgVectorStore.add(documents);
+        List<Document> results = pgVectorStore.similaritySearch(
+                SearchRequest.builder().query("谁创办了 baidu.com").topK(3).build());
+        Assertions.assertNotNull(results);
+        Assertions.assertFalse(results.isEmpty());
     }
 }

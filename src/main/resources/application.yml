@@ -9,12 +9,16 @@ spring:
       chat:
         options:
           model: qwen3-vl:latest
+      embedding:
+        options:
+          model: mxbai-embed-large:latest
     vectorstore:
       pgvector:
-      index-type: HNSW
-      distance-type: COSINE_DISTANCE
-      dimensions: 1536
-      max-document-batch-size: 10000 # Optional: Maximum number of documents per batch
+        initialize-schema: true
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024
+        max-document-batch-size: 10000 # Optional: Maximum number of documents per batch
 
 
 server:
