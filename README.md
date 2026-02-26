@@ -19,6 +19,7 @@
 - 支持结构化输出（JSON -> Java 对象）
 - 支持多种会话记忆存储方案（`file` / `mysql` / `redis`）并通过 yml 切换
 - 支持基础 RAG（Markdown 文档加载、向量化、检索增强问答）
+- 为 `pgvector + RAG` 实操完成配置准备（含多数据源与 AI Bean 冲突处理）
 
 ## 目录结构（当前）
 
@@ -43,7 +44,9 @@
 - `src/main/java/com/kiwi/keweiaiagent/common`
   - `BaseResponse`：统一响应体
 - `src/main/java/com/kiwi/keweiaiagent/config`
+  - `AiModelPrimaryConfig`：指定默认 AI 模型/Embedding Bean 优先级（解决多 Provider 并存冲突）
   - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
+  - `ChatMemoryMySqlDataSourceConfig`：ChatMemory 专用 MySQL 数据源与 MyBatis 配置
   - `GlobalResponseBodyAdvice`：统一响应包装
   - `GlobalCorsConfig`：全局跨域配置
 - `src/main/java/com/kiwi/keweiaiagent/controller`
@@ -61,7 +64,8 @@
   - `DebugBeans`：调试 `ChatModel` Bean 注册情况
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/resources`
-  - `application.yml`：应用、端口、Profile、AI 模型、记忆方式切换与接口文档配置
+  - `application.yml`：应用、端口、Profile、AI 模型、pgvector 预配置与接口文档配置
+  - `application-local.yml`：本地环境数据源/Redis/ChatMemory 等配置（含动态切换参数）
 - `src/test/java/com/kiwi/keweiaiagent`
   - 应用启动测试、`LoveApp` 对话能力测试（文本 / 结构化 / 多模态 / RAG）
 - `src/test/java/com/kiwi/keweiaiagent/rag`
@@ -618,6 +622,85 @@
 - `LoveApp` 新增面向业务的 RAG 问答方法，可直接用于知识库问答场景
 - 为后续扩展文档类型、向量数据库和检索策略打下基础
 
+## 12. 为 pgvector + RAG 实操做准备（多 AI Bean 优先级 + 多数据源拆分 + 配置化开启）
+
+### 本阶段目标
+
+- 在配置层加入 pgvector 相关参数，为后续接入 PostgreSQL/pgvector 向量库做准备
+- 解决同时引入多个 AI Provider（Ollama + Spring AI Alibaba）导致的 Bean 选择冲突
+- 在存在多个数据源（PostgreSQL + MySQL）时，为 ChatMemory 单独拆分 MySQL 数据源配置
+- 通过条件配置动态开启相关组件，避免不同环境相互影响
+
+### 本阶段价值（为什么做）
+
+- 为后续 `pgvector + RAG` 实战提前清理基础设施问题，降低接入复杂度
+- 多 AI Provider 并存时明确默认 `ChatModel / EmbeddingModel`，避免自动装配歧义
+- 多数据源隔离后，业务主数据源与 ChatMemory 数据源职责更清晰，更易维护
+- 条件化配置能够提升项目在本地/测试/不同部署环境下的稳定性
+
+### 主要新增/涉及文件
+
+- `src/main/resources/application.yml`
+  - 本阶段新增/调整：
+    - 增加 `spring.ai.vectorstore.pgvector` 相关配置项（如索引类型、距离类型、维度、批量大小等）
+  - 作用：
+    - 为后续切换到 `pgvector` 向量存储提供预设配置入口
+    - 让 RAG 能力从 `SimpleVectorStore` 向持久化向量库演进时更顺滑
+- `src/main/resources/application-local.yml`
+  - 本阶段新增/调整（本地环境配置）：
+    - PostgreSQL 数据源配置（用于主数据源 / pgvector 场景准备）
+    - Redis 连接配置
+    - `app.chat-memory.type` 及 `file/mysql/redis` 切换相关参数
+    - `app.datasource.mysql.*`（ChatMemory 专用 MySQL 数据源配置）
+  - 作用：
+    - 在本地环境集中管理多数据源和记忆方式切换参数
+    - 支持通过配置动态启用对应组件
+- `src/main/java/com/kiwi/keweiaiagent/config/AiModelPrimaryConfig.java`
+  - 类：`AiModelPrimaryConfig`
+  - 方法：
+    - `ollamaAsPrimaryBeanFactoryPostProcessor()`：通过 `BeanFactoryPostProcessor` 在 Bean 定义阶段将 `ollamaChatModel` 与 `ollamaEmbeddingModel` 标记为 `primary`
+  - 作用：
+    - 解决同时引入 Ollama 与 DashScope（Spring AI Alibaba）后出现的默认 Bean 选择冲突
+    - 保证依赖 `ChatModel` / `EmbeddingModel` 的自动配置（尤其向量存储相关）优先使用 Ollama
+- `src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryMySqlDataSourceConfig.java`
+  - 类：`ChatMemoryMySqlDataSourceConfig`
+  - 条件：
+    - `app.chat-memory.type=mysql`
+    - `app.datasource.mysql.url` 存在
+  - 方法：
+    - `chatMemoryMySqlDataSourceProperties()`：加载 `app.datasource.mysql` 配置
+    - `chatMemoryMySqlDataSource(...)`：创建 ChatMemory 专用 MySQL 数据源
+    - `mysqlChatMemoryJdbcTemplate(...)`：创建 ChatMemory 专用 `JdbcTemplate`
+    - `chatMemorySqlSessionFactory(...)`：创建 ChatMemory 专用 MyBatis `SqlSessionFactory`
+    - `chatMemorySqlSessionTemplate(...)`：创建 ChatMemory 专用 `SqlSessionTemplate`
+  - 作用：
+    - 将 ChatMemory 的 MySQL 访问能力从主数据源中拆分出来
+    - 配合专用 `@MapperScan`，确保 ChatMemory 的 Mapper 绑定到正确数据源
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/ChatMemoryTableInitializer.java`
+  - 类：`ChatMemoryTableInitializer`（本阶段增强）
+  - 方法：
+    - `init()`：继续负责 MySQL 记忆表自动建表
+  - 本阶段改动重点：
+    - 增加 `@ConditionalOnBean(name = "mysqlChatMemoryJdbcTemplate")`
+    - 通过 `@Qualifier("mysqlChatMemoryJdbcTemplate")` 绑定专用 `JdbcTemplate`
+  - 作用：
+    - 避免多数据源场景下误用主数据源执行 ChatMemory 建表 SQL
+    - 仅在 ChatMemory MySQL 组件已正确装配时才执行初始化
+- `src/main/java/com/kiwi/keweiaiagent/chatmemory/mapper/ChatMemoryMessageMapper.java`
+  - 接口：`ChatMemoryMessageMapper`
+  - 本阶段改动重点：
+    - 移除 `@Mapper`（由 `ChatMemoryMySqlDataSourceConfig` 中的专用 `@MapperScan` 统一接管）
+  - 作用：
+    - 避免 Mapper 被默认数据源错误扫描/绑定
+    - 确保 ChatMemory Mapper 明确走 ChatMemory 专用 MySQL 配置链路
+
+### 阶段结果
+
+- 已完成 `pgvector + RAG` 实操前的关键配置准备工作
+- 多 AI Provider 并存的默认模型选择问题得到处理
+- 多数据源场景下的 ChatMemory MySQL 配置已独立并支持条件启用
+- 项目在复杂配置场景下的可维护性与可扩展性进一步提升
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -631,6 +714,7 @@
 - 会话记忆已新增 Redis 实现，并形成 `file/mysql/redis` 三种可切换方案
 - 已支持图片输入的多模态对话能力（`doChatWithImage`）
 - 已具备基础 RAG 能力（文档读取、向量化入库、检索增强问答）
+- 已完成 `pgvector + RAG` 实操前的配置治理（AI Bean 优先级、多数据源拆分、条件化启用）
 
 ## 后续进度补充方式（约定）
 
