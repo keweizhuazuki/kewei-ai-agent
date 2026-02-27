@@ -4,10 +4,7 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -77,10 +74,17 @@ class LoveAppTest {
 
     @Test
     void doChatWithRag() {
-
         String chatId = UUID.randomUUID().toString();
-        String message = "结婚后怎么分家务";
-        String s = loveApp.doChatWithRag(message, chatId);
+        String message = "婚后家务问题怎么处理？";
+        String s = loveApp.doChatWithRag(message, chatId, false);
+        Assertions.assertNotNull(s);
+    }
+
+    @Test
+    void doChatWithRagWithQueryReform() {
+        String chatId = UUID.randomUUID().toString();
+        String message = "结婚后怎么分家务呜呜呜呜呜,能推荐一些课程么？";
+        String s = loveApp.doChatWithRag(message, chatId,true);
         Assertions.assertNotNull(s);
     }
 

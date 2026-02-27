@@ -1,7 +1,8 @@
 package com.kiwi.keweiaiagent.app;
 import com.kiwi.keweiaiagent.advisor.MyLoggerAdvisor;
 import com.kiwi.keweiaiagent.advisor.ReReadingAdvisor;
-import jakarta.annotation.Resource;
+import com.kiwi.keweiaiagent.query.QueryPreprocessor;
+import com.kiwi.keweiaiagent.rag.factory.loveapp.LoveAppRetrievalAugmentationAdvisorFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -9,8 +10,10 @@ import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvi
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.rag.Query;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
@@ -25,6 +28,7 @@ public class LoveApp {
 
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
+    private final QueryPreprocessor queryPreprocessor;
 
 
     private static final String SYSTEM_PROMPT = "扮演深耕恋爱心理领域的专家。开场向用户表明身份，告知用户可倾诉恋爱难题。" +
@@ -33,12 +37,13 @@ public class LoveApp {
             "引导用户详述事情经过、对方反应及自身想法，以便给出专属解决方案。";
 
     @Autowired
-    public LoveApp(ChatModel ollamaChatModel, ChatMemory chatMemory){
+    public LoveApp(ChatModel ollamaChatModel, ChatMemory chatMemory, QueryPreprocessor queryPreprocessor){
 //        chatMemory = MessageWindowChatMemory.builder()
 //                .chatMemoryRepository(new InMemoryChatMemoryRepository())
 //                .maxMessages(10)
 //                .build();
         this.chatMemory = chatMemory;
+        this.queryPreprocessor = queryPreprocessor;
 
         chatClient = ChatClient.builder(ollamaChatModel)
                 .defaultSystem(SYSTEM_PROMPT)
@@ -53,6 +58,7 @@ public class LoveApp {
     LoveApp(ChatClient chatClient) {
         this.chatClient = chatClient;
         this.chatMemory = null;
+        this.queryPreprocessor = null;
     }
 
     /**
@@ -134,15 +140,25 @@ public class LoveApp {
      * 恋爱知识库问答功能
      */
 
-    @Resource
-    private VectorStore loveAppVectorStore;
+    @Autowired
+    @Qualifier("vectorStore")
+    private VectorStore vectorStore;
 
-    public String doChatWithRag(String message, String chatId){
+    public String doChatWithRag(String query, String chatId,boolean withQueryReform){
+        Query rewrittenQuery = withQueryReform ? queryPreprocessor.rewriteQueryTransform(new Query(query)) : new Query(query);
         ChatResponse chatResponse = chatClient
                 .prompt()
-                .user(message)
+                .user(rewrittenQuery.text())
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
-                .advisors(QuestionAnswerAdvisor.builder(loveAppVectorStore).build())
+                // 应用 RAG 内存知识库问答
+//                .advisors(QuestionAnswerAdvisor.builder(loveAppVectorStore).build())
+                // 应用 rag 检索增强服务（基于 PgVector 向量存储）
+                .advisors(QuestionAnswerAdvisor.builder(vectorStore).build())
+                // 应用自定义的 RAG 检索增强服务，基于 PgVector 向量存储，并根据用户状态过滤知识库内容
+//                .advisors(
+//                        LoveAppRetrievalAugmentationAdvisorFactory.createLoveAppRagCustomAdvisor(
+//                                vectorStore,"已婚")
+//                )
                 .call()
                 .chatResponse();
         assert chatResponse != null;
