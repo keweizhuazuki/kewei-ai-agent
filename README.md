@@ -21,6 +21,7 @@
 - 支持基础 RAG（Markdown 文档加载、向量化、检索增强问答）
 - 为 `pgvector + RAG` 实操完成配置准备（含多数据源与 AI Bean 冲突处理）
 - 跑通 `pgvector + RAG` 检索链路（含 PgVector 数据源区分与测试验证）
+- 增强自定义 RAG 能力（查询预处理、关键词增强、按用户状态过滤检索）
 
 ## 目录结构（当前）
 
@@ -59,6 +60,13 @@
 - `src/main/java/com/kiwi/keweiaiagent/rag`
   - `LoveAppDocumentLoader`：加载并解析恋爱知识库 Markdown 文档
   - `LoveAppVectorStoreConfig`：构建向量存储并导入知识库文档
+  - `PgVectorVectorLoadMarkdownConfig`：将 Markdown 文档增量写入 PgVector（按内容哈希去重）
+  - `MyKeywordEnricher`：对文档执行关键词元数据增强
+- `src/main/java/com/kiwi/keweiaiagent/rag/factory/loveapp`
+  - `LoveAppContextualQueryAugmenterFactory`：自定义上下文增强器工厂（空上下文兜底话术）
+  - `LoveAppRetrievalAugmentationAdvisorFactory`：自定义检索增强 Advisor 工厂（状态过滤+检索参数）
+- `src/main/java/com/kiwi/keweiaiagent/query`
+  - `QueryPreprocessor`：查询预处理组件（重写、压缩、多查询扩展）
 - `src/main/java/com/kiwi/keweiaiagent/demo/invoke`
   - `SdkAiInvoke`：阿里百炼 SDK 调用示例
   - `SpringAiAiInvoke`：Spring AI + DashScope 调用示例
@@ -806,6 +814,78 @@
 - `LoveAppTest` 已验证 pgvector 向量检索与 RAG 问答链路可用
 - `pgvector + RAG` 实操链路已成功跑通
 
+## 14. 自定义 RAG 增强链路（查询预处理 + 状态过滤检索 + 文档关键词增强）
+
+### 本阶段目标
+
+- 升级 `LoveApp#doChatWithRag`，支持可选查询改写与 PgVector 检索增强
+- 新增应用级自定义 RAG 工厂类，支持按用户状态过滤知识库内容
+- 新增查询预处理工具，覆盖重写、压缩、多查询扩展
+- 新增 PgVector 文档增量加载配置，引入关键词增强并按内容哈希去重
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段改动：
+    - `doChatWithRag` 方法签名升级为 `doChatWithRag(String query, String chatId, boolean withQueryReform)`
+    - 接入 `QueryPreprocessor`，在 `withQueryReform=true` 时先执行查询重写
+    - RAG 检索基于 `PgVector` 对应 `vectorStore` 执行（`QuestionAnswerAdvisor`）
+  - 作用：
+    - 提供“是否启用查询改写”的开关，增强复杂查询召回能力
+    - 让业务 RAG 问答链路与 PgVector 保持一致
+- `src/main/java/com/kiwi/keweiaiagent/rag/factory/loveapp/LoveAppContextualQueryAugmenterFactory.java`
+  - 类：`LoveAppContextualQueryAugmenterFactory`
+  - 方法：
+    - `createInstance()`：创建 `ContextualQueryAugmenter`，并配置空上下文兜底提示模板
+  - 作用：
+    - 当检索不到上下文时输出可控提示，避免模型自由发挥偏题
+- `src/main/java/com/kiwi/keweiaiagent/rag/factory/loveapp/LoveAppRetrievalAugmentationAdvisorFactory.java`
+  - 类：`LoveAppRetrievalAugmentationAdvisorFactory`
+  - 方法：
+    - `createLoveAppRagCustomAdvisor(VectorStore vectorStore, String status)`：构建支持 `status` 过滤、阈值与 `topK` 的自定义 `RetrievalAugmentationAdvisor`
+  - 作用：
+    - 基于应用状态（如单身/恋爱/已婚）过滤检索文档，提高回答相关性
+    - 将检索增强策略模块化，便于后续按场景扩展
+- `src/main/java/com/kiwi/keweiaiagent/rag/MyKeywordEnricher.java`
+  - 类：`MyKeywordEnricher`
+  - 方法：
+    - `enrichDocument(List<Document> documents)`：使用 `KeywordMetadataEnricher` 为文档补充关键词元数据
+  - 作用：
+    - 在文档入库前增加语义标签，提升后续检索质量
+- `src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java`
+  - 类：`QueryPreprocessor`
+  - 方法：
+    - `rewriteQueryTransform(Query query)`：查询重写转换器
+    - `compressionQueryTransform(Query query)`：查询压缩转换器
+    - `multiQueryExpand(Query query)`：多查询扩展器（默认扩展 3 条）
+  - 作用：
+    - 在检索前优化用户问题表达，提高召回率和检索稳定性
+- `src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java`
+  - 类：`PgVectorVectorLoadMarkdownConfig`
+  - 方法：
+    - `pgVectorVectorStoreConfig()`：应用启动时执行 Markdown 文档加载、去重判断、关键词增强、向量写入
+    - `existsByContentHash(String contentHash)`：按 `content_hash` 判断文档是否已入库
+    - `sanitizeTableName(String configuredTableName)`：校验 pgvector 表名安全性
+    - `extractDocumentText(Document document)`：兼容不同 Spring AI 版本提取文档文本
+    - `sha256Hex(String value)`：生成内容哈希用于去重
+  - 作用：
+    - 保证知识库文档向量化加载可重复执行且不重复入库
+    - 在 PgVector 入库链路中加入关键词增强与安全检查
+- `src/test/java/com/kiwi/keweiaiagent/app/LoveAppTest.java`
+  - 本阶段新增/调整测试：
+    - `doChatWithRag()`：验证普通 RAG 问答（不启用查询改写）
+    - `doChatWithRagWithQueryReform()`：验证开启查询改写后的 RAG 问答
+  - 作用：
+    - 确认 `doChatWithRag` 新参数分支行为可用
+    - 验证查询预处理与 RAG 组合链路可运行
+
+### 阶段结果
+
+- `LoveApp` 已支持可选查询改写的 RAG 问答入口
+- 已具备应用级自定义检索增强工厂能力（空上下文兜底 + 状态过滤检索）
+- 已建立 PgVector 文档增量入库链路（内容哈希去重 + 关键词增强）
+- 查询预处理能力（重写/压缩/扩展）可用于持续优化 RAG 召回效果
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -821,6 +901,7 @@
 - 已具备基础 RAG 能力（文档读取、向量化入库、检索增强问答）
 - 已完成 `pgvector + RAG` 实操前的配置治理（AI Bean 优先级、多数据源拆分、条件化启用）
 - 已跑通 `pgvector + RAG` 检索与问答链路（含多数据源/JDBC 冲突处理与维度适配）
+- 已引入自定义 RAG 增强链路（查询预处理、状态过滤检索、关键词增强、增量入库）
 
 ## 后续进度补充方式（约定）
 
