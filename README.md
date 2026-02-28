@@ -22,6 +22,7 @@
 - 为 `pgvector + RAG` 实操完成配置准备（含多数据源与 AI Bean 冲突处理）
 - 跑通 `pgvector + RAG` 检索链路（含 PgVector 数据源区分与测试验证）
 - 增强自定义 RAG 能力（查询预处理、关键词增强、按用户状态过滤检索）
+- 增加工具调用（Tools）能力，支持文件读写、网页搜索/抓取、资源下载、PDF 转图
 
 ## 目录结构（当前）
 
@@ -45,6 +46,8 @@
   - `ChatMemoryMessageMapper`：会话消息表 Mapper（MyBatis-Plus）
 - `src/main/java/com/kiwi/keweiaiagent/common`
   - `BaseResponse`：统一响应体
+- `src/main/java/com/kiwi/keweiaiagent/constant`
+  - `FileConstant`：文件工具默认保存目录常量
 - `src/main/java/com/kiwi/keweiaiagent/config`
   - `AiModelPrimaryConfig`：指定默认 AI 模型/Embedding Bean 优先级（解决多 Provider 并存冲突）
   - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
@@ -73,13 +76,25 @@
   - `OllamaAiInvoke`：Spring AI + Ollama 调用示例
   - `DebugBeans`：调试 `ChatModel` Bean 注册情况
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
+- `src/main/java/com/kiwi/keweiaiagent/tools`
+  - `ToolRegistration`：统一注册工具回调
+  - `FileOperationTool`：文件读取/写入工具
+  - `WebSearchTool`：联网搜索工具（SearchAPI）
+  - `WebScrapingTool`：网页抓取与摘要工具
+  - `ResourceDownloadTool`：资源下载工具
+  - `PdfConvertTool`：批量 PDF 转 JPG 工具
 - `src/main/resources`
   - `application.yml`：应用、端口、Profile、AI 模型、pgvector 预配置与接口文档配置
   - `application-local.yml`：本地环境数据源/Redis/ChatMemory 等配置（含动态切换参数）
+  - `static/images`：多模态与工具调用相关图片资源（如 `test.png`、`couple.png`）
 - `src/test/java/com/kiwi/keweiaiagent`
-  - 应用启动测试、`LoveApp` 对话能力测试（文本 / 结构化 / 多模态 / RAG）
+  - 应用启动测试、`LoveApp` 对话能力测试（文本 / 结构化 / 多模态 / RAG / Tools）
 - `src/test/java/com/kiwi/keweiaiagent/rag`
   - `LoveAppDocumentLoaderTest`：知识库 Markdown 文档加载测试
+- `src/test/java/com/kiwi/keweiaiagent/tools`
+  - 工具能力测试（文件工具、搜索工具、抓取工具、下载工具、PDF 转换工具）
+- `src/test/resources`
+  - `application-test.yml`：测试环境专用配置（简化自动装配，避免非必要外部依赖）
 
 ## 进度记录
 
@@ -886,6 +901,110 @@
 - 已建立 PgVector 文档增量入库链路（内容哈希去重 + 关键词增强）
 - 查询预处理能力（重写/压缩/扩展）可用于持续优化 RAG 召回效果
 
+## 15. 增加 Tools 调用能力（文件/网页/下载/PDF）并接入 LoveApp
+
+### 本阶段目标
+
+- 在 `LoveApp` 中增加工具调用入口，支持模型按需调用外部工具
+- 新增一批可复用工具类，覆盖文件操作、网页搜索/抓取、资源下载、PDF 转图
+- 补齐工具能力测试与测试环境配置，提升可回归性
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段新增：
+    - 字段 `ToolCallback[] allTools`
+    - 方法 `doChatWithTools(String message, String chatId)`
+  - 作用：
+    - 通过 `chatClient.prompt()...toolCallbacks(allTools)...call()` 挂载工具能力
+    - 让对话在保留会话记忆的同时，触发工具执行并返回工具结果
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 类：`ToolRegistration`
+  - 方法：
+    - `allTools()`：统一返回工具回调数组（`ToolCallback[]`）
+  - 作用：
+    - 集中维护工具注册入口，避免在业务类中分散装配
+- `src/main/java/com/kiwi/keweiaiagent/tools/FileOperationTool.java`
+  - 方法：
+    - `readFile(String fileName)`：读取文件内容
+    - `writeFile(String fileName, String content)`：写入文件内容
+  - 作用：
+    - 提供本地文件读写能力给模型调用
+- `src/main/java/com/kiwi/keweiaiagent/tools/WebSearchTool.java`
+  - 方法：
+    - `searchWebsite(...)`：调用 SearchAPI 进行网页检索并输出简要结果
+    - `resolveApiKey()`：解析 API Key 来源（配置/环境变量/系统参数）
+    - `toConciseResult(...)`：将原始检索结果转换为简明文本
+  - 作用：
+    - 为模型提供联网搜索能力
+- `src/main/java/com/kiwi/keweiaiagent/tools/WebScrapingTool.java`
+  - 方法：
+    - `scrapeWebsite(...)`：抓取网页标题、描述、正文与链接
+    - `buildScrapeResult(...)`：构建标准化抓取结果
+  - 作用：
+    - 为模型提供网页内容抽取能力
+- `src/main/java/com/kiwi/keweiaiagent/tools/ResourceDownloadTool.java`
+  - 方法：
+    - `downloadResource(String url, String fileName)`：下载资源到本地目录
+  - 作用：
+    - 支持模型触发文件下载操作
+- `src/main/java/com/kiwi/keweiaiagent/tools/PdfConvertTool.java`
+  - 方法：
+    - `batchConvertPdfToJpg(String pdfDirectoryPath, Integer dpi)`：批量将目录内 PDF 转换为 JPG
+  - 作用：
+    - 为模型提供批量文档转图能力
+- `src/main/java/com/kiwi/keweiaiagent/constant/FileConstant.java`
+  - 常量：
+    - `File_SAVE_DIR`：工具输出基础目录（`${user.dir}/tmp`）
+  - 作用：
+    - 统一工具类文件落盘目录
+- `src/test/java/com/kiwi/keweiaiagent/app/LoveAppTest.java`
+  - 本阶段新增测试：
+    - `doChatWithTools()`：验证工具调用对话链路
+  - 作用：
+    - 验证 `LoveApp` 与工具注册的集成效果
+- `src/test/java/com/kiwi/keweiaiagent/tools/*.java`
+  - 本阶段新增测试：
+    - `FileOperationToolTest`
+    - `WebSearchToolTest`
+    - `WebScrapingToolTest`
+    - `ResourceDownloadToolTest`
+    - `PdfConvertToolTest`
+  - 作用：
+    - 分别验证工具参数校验、结果结构和基础能力
+- `src/test/resources/application-test.yml`
+  - 本阶段新增：
+    - 测试环境自动装配精简（排除部分数据库/向量库/Provider 自动配置）
+  - 作用：
+    - 降低测试环境对外部依赖的耦合，提高测试稳定性
+
+### 踩坑记录
+
+- 问题 1：DeepSeek 不支持 tools 调用方式
+  - 现象：
+    - 在 DeepSeek 模型下启用 tools 能力会报错
+  - 原因：
+    - 模型侧对 tools 调用能力支持不完整/不兼容
+  - 处理方式：
+    - 切换为支持工具调用（tools/function calling）的模型
+
+- 问题 2：Spring AI 新版本下 `.tools(allTools)` 会报错（不限模型）
+  - 现象：
+    - 在当前升级后的 Spring AI 版本中，`.tools(allTools)` 统一报错
+    - `spring-ai 1.0.0` 版本中该写法可用
+  - 原因：
+    - Spring AI 工具调用 API 在版本升级后发生变化，工具注入方式调整
+  - 处理方式：
+    - 统一改为 `.toolCallbacks(allTools)` 调用
+  - 收获：
+    - 工具调用链路与当前 Spring AI 版本保持一致，兼容性更稳定
+
+### 阶段结果
+
+- `LoveApp` 已具备工具调用能力，支持模型触发实际外部操作
+- 工具模块已形成可扩展结构（统一注册 + 独立工具类 + 对应测试）
+- 多轮对话、RAG 与工具能力可以在同一应用内协同演进
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -902,6 +1021,7 @@
 - 已完成 `pgvector + RAG` 实操前的配置治理（AI Bean 优先级、多数据源拆分、条件化启用）
 - 已跑通 `pgvector + RAG` 检索与问答链路（含多数据源/JDBC 冲突处理与维度适配）
 - 已引入自定义 RAG 增强链路（查询预处理、状态过滤检索、关键词增强、增量入库）
+- 已完成工具调用能力接入（文件、搜索、抓取、下载、PDF 转图）并验证基础测试链路
 
 ## 后续进度补充方式（约定）
 
