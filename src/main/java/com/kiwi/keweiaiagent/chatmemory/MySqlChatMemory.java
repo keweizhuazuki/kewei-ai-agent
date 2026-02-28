@@ -19,18 +19,33 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 基于 MySQL 的聊天记忆实现，负责消息的数据库持久化。
+ */
 @RequiredArgsConstructor
 public class MySqlChatMemory implements ChatMemory {
 
+    /**
+     * JSON 序列化工具。
+     */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
+    /**
+     * 聊天记忆消息数据访问接口。
+     */
     private final ChatMemoryMessageMapper chatMemoryMessageMapper;
 
+    /**
+     * 向数据库中追加指定会话的消息记录。
+     */
     @Override
     public void add(String conversationId, Message message) {
         add(conversationId, List.of(message));
     }
 
+    /**
+     * 向数据库中追加指定会话的消息记录。
+     */
     @Override
     public synchronized void add(String conversationId, List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
@@ -44,6 +59,9 @@ public class MySqlChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 从数据库中读取指定会话的历史消息。
+     */
     @Override
     public synchronized List<Message> get(String conversationId) {
         LambdaQueryWrapper<ChatMemoryMessageDO> queryWrapper = new LambdaQueryWrapper<ChatMemoryMessageDO>()
@@ -55,6 +73,9 @@ public class MySqlChatMemory implements ChatMemory {
                 .toList();
     }
 
+    /**
+     * 删除指定会话在数据库中的历史消息。
+     */
     @Override
     public synchronized void clear(String conversationId) {
         LambdaQueryWrapper<ChatMemoryMessageDO> queryWrapper = new LambdaQueryWrapper<ChatMemoryMessageDO>()
@@ -62,6 +83,9 @@ public class MySqlChatMemory implements ChatMemory {
         chatMemoryMessageMapper.delete(queryWrapper);
     }
 
+    /**
+     * 将消息对象序列化为字符串。
+     */
     private String serializeMessage(Message message) {
         try {
             return OBJECT_MAPPER.writeValueAsString(fromSpringMessage(message));
@@ -70,6 +94,9 @@ public class MySqlChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 将字符串反序列化为消息对象。
+     */
     private Message deserializeMessage(String payloadJson) {
         try {
             StoredMessage storedMessage = OBJECT_MAPPER.readValue(payloadJson, StoredMessage.class);
@@ -79,6 +106,9 @@ public class MySqlChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 将 Spring AI 消息对象转换为数据库可存储结构。
+     */
     private StoredMessage fromSpringMessage(Message message) {
         StoredMessage stored = new StoredMessage();
         stored.type = message.getMessageType().name();
@@ -100,6 +130,9 @@ public class MySqlChatMemory implements ChatMemory {
         return stored;
     }
 
+    /**
+     * 将数据库存储结构恢复为 Spring AI 消息对象。
+     */
     private Message toSpringMessage(StoredMessage stored) {
         MessageType type = MessageType.valueOf(stored.type);
         Map<String, Object> metadata = stored.metadata == null ? Collections.emptyMap() : stored.metadata;
@@ -130,6 +163,9 @@ public class MySqlChatMemory implements ChatMemory {
         };
     }
 
+    /**
+     * 持久化消息对象，封装基础消息的序列化结果。
+     */
     private static class StoredMessage {
         public String type;
         public String text;
@@ -138,6 +174,9 @@ public class MySqlChatMemory implements ChatMemory {
         public List<StoredToolResponse> toolResponses = List.of();
     }
 
+    /**
+     * 持久化工具调用对象，封装工具调用参数的序列化结果。
+     */
     private static class StoredToolCall {
         public String id;
         public String type;
@@ -155,6 +194,9 @@ public class MySqlChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 持久化工具响应对象，封装工具执行结果的序列化内容。
+     */
     private static class StoredToolResponse {
         public String id;
         public String name;
