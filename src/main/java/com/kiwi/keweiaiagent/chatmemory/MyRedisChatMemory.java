@@ -16,11 +16,23 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 基于 Redis 的聊天记忆实现，负责消息的缓存存储与读取。
+ */
 public class MyRedisChatMemory implements ChatMemory {
 
+    /**
+     * JSON 序列化工具。
+     */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
+    /**
+     * Redis 字符串操作模板。
+     */
     private final StringRedisTemplate stringRedisTemplate;
+    /**
+     * 聊天记忆在 Redis 中使用的键前缀。
+     */
     private final String keyPrefix;
 
     public MyRedisChatMemory(StringRedisTemplate stringRedisTemplate, String keyPrefix) {
@@ -28,11 +40,17 @@ public class MyRedisChatMemory implements ChatMemory {
         this.keyPrefix = (keyPrefix == null || keyPrefix.isBlank()) ? "chat:memory:" : keyPrefix;
     }
 
+    /**
+     * 向 Redis 中追加指定会话的消息记录。
+     */
     @Override
     public void add(String conversationId, Message message) {
         add(conversationId, List.of(message));
     }
 
+    /**
+     * 向 Redis 中追加指定会话的消息记录。
+     */
     @Override
     public synchronized void add(String conversationId, List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
@@ -44,6 +62,9 @@ public class MyRedisChatMemory implements ChatMemory {
         stringRedisTemplate.opsForList().rightPushAll(buildKey(conversationId), payloads);
     }
 
+    /**
+     * 从 Redis 中读取指定会话的历史消息。
+     */
     @Override
     public synchronized List<Message> get(String conversationId) {
         List<String> payloads = stringRedisTemplate.opsForList().range(buildKey(conversationId), 0, -1);
@@ -55,15 +76,24 @@ public class MyRedisChatMemory implements ChatMemory {
                 .toList();
     }
 
+    /**
+     * 删除指定会话在 Redis 中的历史消息。
+     */
     @Override
     public synchronized void clear(String conversationId) {
         stringRedisTemplate.delete(buildKey(conversationId));
     }
 
+    /**
+     * 构造 Redis 中使用的完整会话键。
+     */
     private String buildKey(String conversationId) {
         return keyPrefix + conversationId;
     }
 
+    /**
+     * 将消息对象序列化为字符串。
+     */
     private String serializeMessage(Message message) {
         try {
             return OBJECT_MAPPER.writeValueAsString(fromSpringMessage(message));
@@ -72,6 +102,9 @@ public class MyRedisChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 将字符串反序列化为消息对象。
+     */
     private Message deserializeMessage(String payloadJson) {
         try {
             StoredMessage storedMessage = OBJECT_MAPPER.readValue(payloadJson, StoredMessage.class);
@@ -81,6 +114,9 @@ public class MyRedisChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 将 Spring AI 消息对象转换为可存储结构。
+     */
     private StoredMessage fromSpringMessage(Message message) {
         StoredMessage stored = new StoredMessage();
         stored.type = message.getMessageType().name();
@@ -102,6 +138,9 @@ public class MyRedisChatMemory implements ChatMemory {
         return stored;
     }
 
+    /**
+     * 将存储结构恢复为 Spring AI 消息对象。
+     */
     private Message toSpringMessage(StoredMessage stored) {
         MessageType type = MessageType.valueOf(stored.type);
         Map<String, Object> metadata = stored.metadata == null ? Collections.emptyMap() : stored.metadata;
@@ -132,6 +171,9 @@ public class MyRedisChatMemory implements ChatMemory {
         };
     }
 
+    /**
+     * 持久化消息对象，封装基础消息的序列化结果。
+     */
     private static class StoredMessage {
         public String type;
         public String text;
@@ -140,6 +182,9 @@ public class MyRedisChatMemory implements ChatMemory {
         public List<StoredToolResponse> toolResponses = List.of();
     }
 
+    /**
+     * 持久化工具调用对象，封装工具调用参数的序列化结果。
+     */
     private static class StoredToolCall {
         public String id;
         public String type;
@@ -157,6 +202,9 @@ public class MyRedisChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 持久化工具响应对象，封装工具执行结果的序列化内容。
+     */
     private static class StoredToolResponse {
         public String id;
         public String name;
