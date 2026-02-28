@@ -3,6 +3,12 @@ import com.kiwi.keweiaiagent.advisor.MyLoggerAdvisor;
 import com.kiwi.keweiaiagent.advisor.ReReadingAdvisor;
 import com.kiwi.keweiaiagent.query.QueryPreprocessor;
 import com.kiwi.keweiaiagent.rag.factory.loveapp.LoveAppRetrievalAugmentationAdvisorFactory;
+import com.kiwi.keweiaiagent.tools.FileOperationTool;
+import com.kiwi.keweiaiagent.tools.PdfConvertTool;
+import com.kiwi.keweiaiagent.tools.ResourceDownloadTool;
+import com.kiwi.keweiaiagent.tools.WebScrapingTool;
+import com.kiwi.keweiaiagent.tools.WebSearchTool;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -11,6 +17,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.rag.Query;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -37,7 +44,9 @@ public class LoveApp {
             "引导用户详述事情经过、对方反应及自身想法，以便给出专属解决方案。";
 
     @Autowired
-    public LoveApp(ChatModel ollamaChatModel, ChatMemory chatMemory, QueryPreprocessor queryPreprocessor){
+    public LoveApp(ChatModel ollamaChatModel,
+                   ChatMemory chatMemory,
+                   QueryPreprocessor queryPreprocessor){
 //        chatMemory = MessageWindowChatMemory.builder()
 //                .chatMemoryRepository(new InMemoryChatMemoryRepository())
 //                .maxMessages(10)
@@ -164,5 +173,23 @@ public class LoveApp {
         assert chatResponse != null;
         return chatResponse.getResult().getOutput().getText();
     }
+
+    // 工具调用功能
+    @Resource
+    private ToolCallback[] allTools;
+
+    public String doChatWithTools(String message, String chatId){
+        ChatResponse chatResponse = chatClient
+                .prompt()
+                .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(allTools)
+                .call()
+                .chatResponse();
+        log.info("chatResponse: {}", chatResponse);
+        assert chatResponse != null;
+        return chatResponse.getResult().getOutput().getText();
+    }
+
 
 }
