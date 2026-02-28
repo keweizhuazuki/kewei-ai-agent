@@ -22,11 +22,23 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 基于文件的聊天记忆实现，负责消息的本地持久化与恢复。
+ */
 public class FileBaseChatMemory implements ChatMemory {
 
+    /**
+     * JSON 序列化工具。
+     */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
+    /**
+     * 持久化消息列表的类型引用。
+     */
     private static final TypeReference<List<StoredMessage>> STORED_MESSAGE_LIST_TYPE = new TypeReference<>() {};
 
+    /**
+     * 本地文件存储目录。
+     */
     private final String Base_DIR;
 
     public FileBaseChatMemory(String base_DIR) {
@@ -40,11 +52,17 @@ public class FileBaseChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 向指定会话追加消息记录。
+     */
     @Override
     public void add(String conversationId, Message message) {
         add(conversationId, List.of(message));
     }
 
+    /**
+     * 向指定会话追加消息记录。
+     */
     @Override
     public synchronized void add(String conversationId, List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
@@ -55,11 +73,17 @@ public class FileBaseChatMemory implements ChatMemory {
         saveConversation(conversationId, allMessages);
     }
 
+    /**
+     * 读取指定会话的历史消息。
+     */
     @Override
     public synchronized List<Message> get(String conversationId) {
         return List.copyOf(getOrCreateConversation(conversationId));
     }
 
+    /**
+     * 清空指定会话的历史消息。
+     */
     @Override
     public synchronized void clear(String conversationId) {
         File file = getConversationFile(conversationId);
@@ -105,6 +129,9 @@ public class FileBaseChatMemory implements ChatMemory {
         return new java.util.ArrayList<>();
     }
 
+    /**
+     * 将会话消息列表写回本地文件。
+     */
     private void saveConversation(String conversationId, List<Message> messages) {
         File file = getConversationFile(conversationId);
         File tempFile = new File(file.getParentFile(), file.getName() + ".tmp");
@@ -134,6 +161,9 @@ public class FileBaseChatMemory implements ChatMemory {
         return new File(Base_DIR, safeFileName);
     }
 
+    /**
+     * 将 Spring AI 消息对象转换为可持久化结构。
+     */
     private StoredMessage fromSpringMessage(Message message) {
         StoredMessage stored = new StoredMessage();
         stored.type = message.getMessageType().name();
@@ -155,6 +185,9 @@ public class FileBaseChatMemory implements ChatMemory {
         return stored;
     }
 
+    /**
+     * 将持久化结构恢复为 Spring AI 消息对象。
+     */
     private Message toSpringMessage(StoredMessage stored) {
         MessageType type = MessageType.valueOf(stored.type);
         Map<String, Object> metadata = stored.metadata == null ? Collections.emptyMap() : stored.metadata;
@@ -185,6 +218,9 @@ public class FileBaseChatMemory implements ChatMemory {
         };
     }
 
+    /**
+     * 持久化消息对象，封装基础消息的序列化结果。
+     */
     private static class StoredMessage {
         public String type;
         public String text;
@@ -193,6 +229,9 @@ public class FileBaseChatMemory implements ChatMemory {
         public List<StoredToolResponse> toolResponses = List.of();
     }
 
+    /**
+     * 持久化工具调用对象，封装工具调用参数的序列化结果。
+     */
     private static class StoredToolCall {
         public String id;
         public String type;
@@ -210,6 +249,9 @@ public class FileBaseChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 持久化工具响应对象，封装工具执行结果的序列化内容。
+     */
     private static class StoredToolResponse {
         public String id;
         public String name;
