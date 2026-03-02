@@ -23,6 +23,7 @@
 - 跑通 `pgvector + RAG` 检索链路（含 PgVector 数据源区分与测试验证）
 - 增强自定义 RAG 能力（查询预处理、关键词增强、按用户状态过滤检索）
 - 增加工具调用（Tools）能力，支持文件读写、网页搜索/抓取、资源下载、PDF 转图
+- 持续扩展工具能力（邮件发送、时间查询），完善工具注册与测试覆盖
 
 ## 目录结构（当前）
 
@@ -78,6 +79,8 @@
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/java/com/kiwi/keweiaiagent/tools`
   - `ToolRegistration`：统一注册工具回调
+  - `EmailTool`：邮件发送工具（SMTP）
+  - `TimeTool`：时间查询工具（支持时区）
   - `FileOperationTool`：文件读取/写入工具
   - `WebSearchTool`：联网搜索工具（SearchAPI）
   - `WebScrapingTool`：网页抓取与摘要工具
@@ -1005,6 +1008,67 @@
 - 工具模块已形成可扩展结构（统一注册 + 独立工具类 + 对应测试）
 - 多轮对话、RAG 与工具能力可以在同一应用内协同演进
 
+## 16. 扩展工具能力（EmailTool / TimeTool）并完善工具注册方式
+
+### 本阶段目标
+
+- 在现有工具体系上新增“邮件发送”和“时间查询”能力
+- 优化 `ToolRegistration`，由“手动 new 工具对象”调整为“基于 Spring Bean 注入统一注册”
+- 补充新增工具对应测试，保障工具扩展后的可用性
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/EmailTool.java`
+  - 类：`EmailTool`
+  - 方法：
+    - `sendEmail(String to, String subject, String content, Boolean html)`：发送邮件（支持纯文本/HTML）
+    - `readConfig(...)`：按优先级读取 SMTP 配置（Spring 配置、系统参数、环境变量）
+    - `parsePortOrDefault(...)`：解析端口并提供默认值
+    - `parseBooleanOrDefault(...)`：解析布尔配置并提供默认值
+    - `maskPresent(...)`：返回配置项是否存在的状态文本
+  - 作用：
+    - 为 Agent 提供 SMTP 邮件发送能力
+    - 对参数和配置进行前置校验，降低误调用风险
+- `src/main/java/com/kiwi/keweiaiagent/tools/TimeTool.java`
+  - 类：`TimeTool`
+  - 方法：
+    - `getCurrentDateTime(String zoneId)`：按指定时区（或系统默认时区）返回当前日期、时间、时间戳等信息
+  - 作用：
+    - 提供可被模型调用的时间查询能力
+    - 支持 IANA 时区 ID，便于跨时区场景
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 类：`ToolRegistration`（本阶段增强）
+  - 方法：
+    - `allTools(...)`：通过 Spring 注入的工具 Bean 统一组装 `ToolCallback[]`
+  - 本阶段改动重点：
+    - 从 `new XxxTool()` 改为方法参数注入（`EmailTool`、`TimeTool`、`FileOperationTool`、`PdfConvertTool`、`ResourceDownloadTool`、`WebSearchTool`、`WebScrapingTool`）
+  - 作用：
+    - 保证工具实例走 Spring 生命周期与配置注入链路
+    - 让工具扩展更可维护，避免手工实例化带来的配置失效问题
+- `src/test/java/com/kiwi/keweiaiagent/tools/EmailToolTest.java`
+  - 方法：
+    - `shouldReturnErrorWhenReceiverMissing()`
+    - `shouldReturnErrorWhenReceiverInvalid()`
+  - 作用：
+    - 验证邮件工具核心参数校验逻辑
+- `src/test/java/com/kiwi/keweiaiagent/tools/EmailToolManualTest.java`
+  - 方法：
+    - `sendEmailManually()`（默认 `@Disabled`）
+  - 作用：
+    - 提供手动联调入口，避免自动化测试误发邮件
+- `src/test/java/com/kiwi/keweiaiagent/tools/TimeToolTest.java`
+  - 方法：
+    - `shouldReturnCurrentDateTimeWithDefaultZone()`
+    - `shouldReturnErrorWhenZoneInvalid()`
+  - 作用：
+    - 验证时间工具在默认时区和非法时区输入下的行为
+
+### 阶段结果
+
+- 工具能力从“文件/网页/下载/PDF”扩展到“邮件/时间”场景
+- `ToolRegistration` 已切换到 Spring Bean 注入式注册，扩展性和稳定性更高
+- 新增工具具备基础测试保障，后续可继续按同一模式快速扩展工具集
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -1022,6 +1086,7 @@
 - 已跑通 `pgvector + RAG` 检索与问答链路（含多数据源/JDBC 冲突处理与维度适配）
 - 已引入自定义 RAG 增强链路（查询预处理、状态过滤检索、关键词增强、增量入库）
 - 已完成工具调用能力接入（文件、搜索、抓取、下载、PDF 转图）并验证基础测试链路
+- 已扩展工具生态（邮件发送、时间查询）并完成注册方式升级（Bean 注入式）
 
 ## 后续进度补充方式（约定）
 
