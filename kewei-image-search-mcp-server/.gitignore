@@ -1,22 +1,10 @@
-### CUSTOM ###
-application-local.yml
-application-*.local.yml
-application-*.local.yaml
-.env
-.env.*
-*.pem
-*.p12
-*.jks
-*.keystore
-src/main/java/com/kiwi/keweiaiagent/demo/invoke/TestApiKey.java
-tmp
-src/main/resources/mcp-servers.json
-
 HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+
+**/application-local.yml
 
 ### STS ###
 .apt_generated

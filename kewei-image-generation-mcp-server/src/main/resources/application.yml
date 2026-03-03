@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: kewei-image-generation-mcp-server
+  profiles:
+    active: sse
+server:
+  port: 8129

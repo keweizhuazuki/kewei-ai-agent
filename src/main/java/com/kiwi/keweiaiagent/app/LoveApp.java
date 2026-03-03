@@ -18,6 +18,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -191,5 +192,21 @@ public class LoveApp {
         return chatResponse.getResult().getOutput().getText();
     }
 
+    // mcp 协议注入
+    @Resource
+    private ToolCallbackProvider toolCallbackProvider;
+
+    public String doChatWithMCP(String message, String chatId){
+        ChatResponse chatResponse = chatClient
+                .prompt()
+                .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(toolCallbackProvider)
+                .call()
+                .chatResponse();
+        log.info("chatResponse: {}", chatResponse);
+        assert chatResponse != null;
+        return chatResponse.getResult().getOutput().getText();
+    }
 
 }

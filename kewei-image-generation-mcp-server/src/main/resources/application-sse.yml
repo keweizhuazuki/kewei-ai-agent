@@ -1,0 +1,8 @@
+spring:
+  ai:
+    mcp:
+      server:
+        name: zkkw-image-generation-mcp-server
+        version: 0.0.1
+        type: sync
+        stdio: false

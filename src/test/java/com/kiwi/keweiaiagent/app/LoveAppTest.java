@@ -4,6 +4,8 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,9 +13,15 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -105,5 +113,54 @@ class LoveAppTest {
                 SearchRequest.builder().query("谁创办了 baidu.com").topK(3).build());
         Assertions.assertNotNull(results);
         Assertions.assertFalse(results.isEmpty());
+    }
+
+    @Test
+    void doChatWithTools() {
+//        // 测试邮件发送工具
+//        testMessage("帮我发一封邮件给 shirleysunjr@gmail.com，内容是： 虽然你很笨笨，但我还是很爱你");
+//        // 测试时间日期工具
+//        testMessage("现在是什么时间？");
+//        // 测试联网搜索问题
+//        testMessage("周末想带女朋友去上海约会，推荐几个适合情侣的小众打卡地吧");
+//
+//        // 测试网站抓取
+//        testMessage("最近和对象吵架了，看看力扣（leetcode.cn）的其他情侣是怎么解决问题的？");
+
+        // 测试资源下载
+        testMessage("下载一张适合做手机壁纸的星空情侣图片为文件到/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/tmp/download");
+
+        // 测试pdf转jpg
+        testMessage("/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/tmp/pdfs下的所有pdf都转换成jpg图片");
+
+        //
+    }
+
+    private void testMessage(String message) {
+        String chatId = UUID.randomUUID().toString();
+        String answer = loveApp.doChatWithTools(message, chatId);
+        Assertions.assertNotNull(answer);
+    }
+
+    @Test
+    void doChatWithMCP() throws IOException {
+        String chatId = UUID.randomUUID().toString();
+//        String message = "我的另一半居住在上海保利越秀，请帮我找到5公里内合适的约会地点";
+//        String answer = loveApp.doChatWithTools(message, chatId);
+//        Assertions.assertNotNull(answer);
+        //测试图片搜索 mcp
+//        String message = "帮我搜搜一些哄另一半开心的图片";
+//        String answer = loveApp.doChatWithMCP(message, chatId);
+//        Assertions.assertNotNull(answer);
+        //测试图片生成 mcp
+        String message = "帮我生成一张能让另一半开心的图片，风格要可爱，不用太高质量";
+        String answer = loveApp.doChatWithMCP(message, chatId);
+
+        Assertions.assertNotNull(answer);
+
+        Path imagePath = Path.of(answer);
+        Assertions.assertTrue(Files.exists(imagePath), "图片路径不存在: " + answer);
+        Assertions.assertTrue(Files.size(imagePath) > 0, "图片文件为空: " + answer);
+        System.out.println("image saved by mcp: " + imagePath.toAbsolutePath());
     }
 }

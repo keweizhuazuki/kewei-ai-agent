@@ -8,10 +8,20 @@ spring:
       base-url: http://localhost:11434
       chat:
         options:
-          model: qwen3-vl:latest
+          model: qwen3.5:35b
       embedding:
         options:
           model: mxbai-embed-large:latest
+    mcp:
+      client:
+        sse:
+          connections:
+            server1:
+                url: http://localhost:8129
+#        stdio:
+#          servers-configuration: classpath:mcp-servers.json
+        request-timeout: 200s
+
     vectorstore:
       pgvector:
         initialize-schema: true
