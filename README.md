@@ -24,6 +24,8 @@
 - 增强自定义 RAG 能力（查询预处理、关键词增强、按用户状态过滤检索）
 - 增加工具调用（Tools）能力，支持文件读写、网页搜索/抓取、资源下载、PDF 转图
 - 持续扩展工具能力（邮件发送、时间查询），完善工具注册与测试覆盖
+- 接入 MCP 客户端与独立 MCP 工具服务（图像搜索 / 图像生成），支持跨服务工具编排
+- 引入多步 Agent 执行框架（ReAct + Tool Calling + 终止机制）并开放控制器接口
 
 ## 目录结构（当前）
 
@@ -32,7 +34,7 @@
 - `src/main/java/com/kiwi/keweiaiagent`
   - `KeweiAiAgentApplication`：Spring Boot 启动入口
 - `src/main/java/com/kiwi/keweiaiagent/app`
-  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、RAG、记忆、Advisor 链）
+  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、RAG、Tools、MCP、记忆、Advisor 链）
 - `src/main/java/com/kiwi/keweiaiagent/advisor`
   - `MyLoggerAdvisor`：记录请求与响应日志
   - `ReReadingAdvisor`：对用户输入进行增强，并向 Advisor 链上下文写入原始输入
@@ -58,6 +60,7 @@
   - `GlobalCorsConfig`：全局跨域配置
 - `src/main/java/com/kiwi/keweiaiagent/controller`
   - `HealController`：健康检查接口
+  - `AiController`：统一 AI 能力入口（同步/流式/SSE/Agent/MCP）
 - `src/main/java/com/kiwi/keweiaiagent/exception`
   - `BusinessException`：业务异常定义
   - `GlobalExceptionHandler`：全局异常处理器
@@ -79,6 +82,7 @@
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/java/com/kiwi/keweiaiagent/tools`
   - `ToolRegistration`：统一注册工具回调
+  - `TerminateTool`：Agent 终止工具（用于多步任务结束信号）
   - `EmailTool`：邮件发送工具（SMTP）
   - `TimeTool`：时间查询工具（支持时区）
   - `FileOperationTool`：文件读取/写入工具
@@ -94,10 +98,27 @@
   - 应用启动测试、`LoveApp` 对话能力测试（文本 / 结构化 / 多模态 / RAG / Tools）
 - `src/test/java/com/kiwi/keweiaiagent/rag`
   - `LoveAppDocumentLoaderTest`：知识库 Markdown 文档加载测试
+- `src/test/java/com/kiwi/keweiaiagent/agent`
+  - Agent 能力测试（`BaseAgentTest`、`ToolCallAgentTest`、`KeweiManusTest`）
+- `src/test/java/com/kiwi/keweiaiagent/controller`
+  - `AiControllerTest`：流式与 SSE 接口测试
 - `src/test/java/com/kiwi/keweiaiagent/tools`
   - 工具能力测试（文件工具、搜索工具、抓取工具、下载工具、PDF 转换工具）
+- `src/main/java/com/kiwi/keweiaiagent/agent`
+  - `BaseAgent`：Agent 执行生命周期抽象（run/runStream/step/状态管理）
+  - `ReActAgent`：ReAct 抽象层（think + act）
+  - `ToolCallAgent`：工具调用型 Agent 实现
+  - `KeweiManus`：应用级多工具 Agent
+- `src/main/java/com/kiwi/keweiaiagent/agent/model`
+  - `AgentState`：Agent 状态枚举（IDLE/RUNNING/FINISHED/ERROR）
 - `src/test/resources`
   - `application-test.yml`：测试环境专用配置（简化自动装配，避免非必要外部依赖）
+- `kewei-image-search-mcp-server`
+  - 独立 MCP 服务工程：提供 `ImageSearchTool`（基于 Pexels 的图片搜索）
+  - 含 `application.yml` / `application-sse.yml` / `application-stdio.yml` 与对应测试
+- `kewei-image-generation-mcp-server`
+  - 独立 MCP 服务工程：提供 `ImageGenerationTool`（基于 Draw Things 的文生图）
+  - 含 `application.yml` / `application-sse.yml` / `application-stdio.yml` 与对应测试
 
 ## 进度记录
 
@@ -1069,6 +1090,281 @@
 - `ToolRegistration` 已切换到 Spring Bean 注入式注册，扩展性和稳定性更高
 - 新增工具具备基础测试保障，后续可继续按同一模式快速扩展工具集
 
+## 17. 接入 MCP 图像能力（图片搜索 + 图片生成）并在 LoveApp 打通调用链路
+
+### 本阶段目标
+
+- 在主应用中接入 `spring-ai-starter-mcp-client`，支持通过 MCP 调用外部工具服务
+- 新增两个独立 MCP 服务工程：
+  - 图片搜索 MCP 服务（Pexels）
+  - 图片生成 MCP 服务（Draw Things）
+- 在 `LoveApp` 中增加 MCP 对话入口，完成端到端调用与测试验证
+
+### 本阶段价值（为什么做）
+
+- 将重工具型能力从主应用拆分为独立 MCP 服务，降低主应用耦合
+- 便于后续独立扩展、部署和维护图像相关能力
+- 为后续接入更多第三方能力（地图、日历、知识平台等）提供标准化接入模式
+
+### 主要新增/涉及文件
+
+- `pom.xml`
+  - 本阶段新增：
+    - `spring-ai-starter-mcp-client`
+  - 作用：
+    - 让主应用具备 MCP 客户端能力，可通过 `ToolCallbackProvider` 调用外部 MCP 工具
+- `src/main/resources/application.yml`
+  - 本阶段新增/调整：
+    - 增加 `spring.ai.mcp.client.sse.connections.*` 与 `request-timeout` 等配置
+  - 作用：
+    - 配置主应用与 MCP 服务的连接方式（SSE）
+    - 控制 MCP 请求超时与连接行为
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段新增：
+    - 字段：`ToolCallbackProvider toolCallbackProvider`
+    - 方法：`doChatWithMCP(String message, String chatId)`
+  - 作用：
+    - 在对话链路中通过 `.toolCallbacks(toolCallbackProvider)` 调用 MCP 工具
+    - 在保留会话上下文的同时，将图像类任务委托给外部 MCP 服务
+- `src/test/java/com/kiwi/keweiaiagent/app/LoveAppTest.java`
+  - 本阶段新增测试：
+    - `doChatWithMCP()`
+  - 作用：
+    - 验证 MCP 工具调用链路可用
+    - 对图片生成场景校验返回路径是否存在且文件非空
+
+- `kewei-image-search-mcp-server/src/main/java/com/kiwi/keweiimagesearchmcpserver/KeweiImageSearchMcpServerApplication.java`
+  - 类：`KeweiImageSearchMcpServerApplication`
+  - 方法：
+    - `imageSearchTools(ImageSearchTool imageSearchTool)`：注册 MCP 工具提供器
+  - 作用：
+    - 暴露图片搜索工具为 MCP 可调用能力
+- `kewei-image-search-mcp-server/src/main/java/com/kiwi/keweiimagesearchmcpserver/tools/ImageSearchTool.java`
+  - 类：`ImageSearchTool`
+  - 方法：
+    - `searchImage(String query)`：按关键词调用 Pexels API 并返回图片 URL 列表
+    - `resolveApiKey()`：读取 API Key（配置或环境变量）
+  - 作用：
+    - 提供独立可复用的图片搜索能力
+- `kewei-image-search-mcp-server/src/main/resources/application.yml`
+- `kewei-image-search-mcp-server/src/main/resources/application-sse.yml`
+- `kewei-image-search-mcp-server/src/main/resources/application-stdio.yml`
+  - 作用：
+    - 提供 MCP 服务运行模式配置（SSE / stdio）
+- `kewei-image-search-mcp-server/src/test/java/com/kiwi/keweiimagesearchmcpserver/tools/ImageSearchToolTest.java`
+  - 作用：
+    - 验证图片搜索工具基本可用
+
+- `kewei-image-generation-mcp-server/src/main/java/com/kiwi/keweiimagegenerationmcpserver/KeweiImageGenerationMcpServerApplication.java`
+  - 类：`KeweiImageGenerationMcpServerApplication`
+  - 方法：
+    - `imageGenerationTools(ImageGenerationTool imageGenerationTool)`：注册 MCP 工具提供器
+  - 作用：
+    - 暴露图片生成工具为 MCP 可调用能力
+- `kewei-image-generation-mcp-server/src/main/java/com/kiwi/keweiimagegenerationmcpserver/tools/ImageGenerationTool.java`
+  - 类：`ImageGenerationTool`
+  - 方法：
+    - `generateImage(...)`：调用 Draw Things 文生图接口生成图片
+    - `saveImageToFile(String base64Image)`：将 Base64 图片落盘并返回绝对路径
+  - 作用：
+    - 将高耗时/长返回的图片生成能力放到独立服务处理
+    - 返回可直接访问的本地路径，便于主应用后续处理
+- `kewei-image-generation-mcp-server/src/main/resources/application.yml`
+- `kewei-image-generation-mcp-server/src/main/resources/application-sse.yml`
+- `kewei-image-generation-mcp-server/src/main/resources/application-stdio.yml`
+  - 作用：
+    - 提供 MCP 服务运行模式配置（SSE / stdio）
+- `kewei-image-generation-mcp-server/src/test/java/com/kiwi/keweiimagegenerationmcpserver/tools/ImageGenerationToolTest.java`
+- `kewei-image-generation-mcp-server/src/test/java/com/kiwi/keweiimagegenerationmcpserver/tools/ImageGenerationToolRealTest.java`
+  - 作用：
+    - 覆盖模拟接口与真实环境联调两类验证场景
+
+### 踩坑记录
+
+- 问题：图像生成时直接把超长结果返回给 AI，处理耗时很长且效果不稳定
+  - 现象：
+    - image generation 返回内容过长（尤其大段 Base64）时，主对话链路处理时间明显增加，交互体验变差
+  - 当前解决方案：
+    - 在图片生成 MCP 服务里将结果落盘，仅返回“本地存储路径”
+  - 后续优化方向：
+    - 上传到云存储（对象存储/网盘），返回可访问链接给用户，减少本地路径耦合并提升跨端可用性
+
+### 启动与联调手册
+
+### 启动顺序
+
+1. 启动图片生成 MCP 服务（默认端口 `8129`）
+2. 启动图片搜索 MCP 服务（默认端口 `8127`）
+3. 启动主应用 `kewei-ai-agent`（默认端口 `8123`）
+
+### 启动命令（建议）
+
+1. 启动图片生成 MCP 服务（SSE）
+
+```bash
+cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-image-generation-mcp-server
+mvn spring-boot:run
+```
+
+2. 启动图片搜索 MCP 服务（SSE）
+
+```bash
+cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-image-search-mcp-server
+./mvnw spring-boot:run
+```
+
+3. 启动主应用
+
+```bash
+cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
+./mvnw spring-boot:run
+```
+
+### 关键配置检查
+
+- 图片生成 MCP：
+  - `kewei-image-generation-mcp-server/src/main/resources/application.yml`
+  - `server.port=8129`
+  - `spring.ai.mcp.server.*` 位于 `application-sse.yml` / `application-stdio.yml`
+- 图片搜索 MCP：
+  - `kewei-image-search-mcp-server/src/main/resources/application.yml`
+  - `server.port=8127`
+  - `spring.ai.mcp.server.*` 位于 `application-sse.yml` / `application-stdio.yml`
+  - 需要配置 `PEXELS_API_KEY` 或 `pexels.api-key`
+- 主应用 MCP 客户端：
+  - `src/main/resources/application.yml`
+  - `spring.ai.mcp.client.sse.connections.server1.url=http://localhost:8129`
+  - 如果需要同时连接图片搜索服务，可再新增一个连接（例如 `server2.url=http://localhost:8127`）
+
+### 最小联调步骤
+
+1. 在主应用执行 `LoveAppTest#doChatWithMCP()`，先验证图片生成链路
+2. 检查返回值是否为本地文件路径，且文件存在且非空
+3. 放开 `doChatWithMCP()` 中图片搜索测试语句后，验证图片搜索链路
+4. 若联调超时，优先检查：
+   - MCP 服务是否已启动且端口一致
+   - Draw Things 服务是否可用（图片生成依赖）
+   - Pexels API Key 是否正确（图片搜索依赖）
+
+### 阶段结果
+
+- 主应用已具备通过 MCP 调用外部图像工具服务的能力
+- 图片搜索与图片生成能力已完成服务化拆分并可独立运行
+- `LoveApp` 侧已打通 MCP 调用与验证流程，为后续跨服务工具编排打下基础
+
+## 18. 引入 Agent 执行框架与控制器扩展（ReAct + Tool Calling + 多种流式返回）
+
+### 本阶段目标
+
+- 在主应用中引入可多步执行的 Agent 框架，支持“思考-行动”循环
+- 将工具调用能力从单轮对话升级为 Agent 多步任务执行
+- 扩展 `AiController`，统一提供同步、SSE、SseEmitter、Manus Agent 入口
+- 补齐 Agent 与控制器相关测试
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/model/AgentState.java`
+  - 枚举：`IDLE`、`RUNNING`、`FINISHED`、`ERROR`
+  - 作用：
+    - 统一 Agent 生命周期状态，作为并发与异常控制基础
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/BaseAgent.java`
+  - 类：`BaseAgent`（抽象）
+  - 核心方法：
+    - `run(String userPrompt)`：同步多步执行主流程
+    - `runStream(String userPrompt)`：基于 `SseEmitter` 的流式多步执行
+    - `step()`：单步执行抽象方法
+    - `cleanup()`：资源清理与生命周期收尾
+  - 内部能力：
+    - prompt/state 校验
+    - 最大步数控制
+    - 错误事件回传（stream）
+  - 作用：
+    - 定义 Agent 统一执行模板，减少子类重复逻辑
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ReActAgent.java`
+  - 类：`ReActAgent`（抽象，继承 `BaseAgent`）
+  - 方法：
+    - `think()`：决策是否需要执行动作
+    - `act()`：执行动作并返回结果
+    - `step()`：封装 ReAct 单步流程（think -> act）
+  - 作用：
+    - 将 Agent 行为标准化为 ReAct 模式
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ToolCallAgent.java`
+  - 类：`ToolCallAgent`（继承 `ReActAgent`）
+  - 核心方法：
+    - `think()`：调用大模型解析是否需要工具调用
+    - `act()`：执行工具调用并回写对话历史
+    - `summarizeToolPlan(...)`：工具计划可读化摘要
+    - `buildSystemPrompt()`：系统提示与下一步提示合并
+  - 作用：
+    - 提供“工具驱动的多步 Agent”核心实现
+    - 支持终止工具检测并将 Agent 状态置为 `FINISHED`
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`
+  - 类：`KeweiManus`（继承 `ToolCallAgent`）
+  - 作用：
+    - 基于业务场景预置系统提示词、下一步提示词、最大步数
+    - 作为可直接调用的应用级 Agent
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/TerminateTool.java`
+  - 类：`TerminateTool`
+  - 方法：
+    - `doTerminate()`：返回任务结束信号
+  - 作用：
+    - 在多步 Agent 链路中显式结束任务，避免无意义循环
+
+- `src/main/java/com/kiwi/keweiaiagent/exception/ErrorCode.java`
+  - 类：`ErrorCode`（枚举）
+  - 本阶段重点：
+    - 增加 Agent 相关错误码（如 `AGENT_BUSY`、`AGENT_RUN_FAILED`）
+  - 作用：
+    - 为 Agent 执行状态异常提供统一错误语义
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 本阶段改动：
+    - 将 `TerminateTool` 纳入 `allTools(...)`
+  - 作用：
+    - 让 Agent 在工具调用链路中可使用“终止”动作
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段新增/增强：
+    - `doChatWithStream(String message, String chatId)`：流式内容输出
+    - `doChatWithMCP(String message, String chatId)`：MCP 工具调用入口
+    - `doChatWithTools(...)` 保持工具回调链路
+  - 作用：
+    - 为控制层提供统一调用接口（同步 / 流式 / 工具 / MCP）
+
+- `src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`
+  - 本阶段新增/增强接口：
+    - `/ai/love_app/chat/sync`
+    - `/ai/love_app/chat/sse`
+    - `/ai/love_app/chat/server_sent_event`
+    - `/ai/love_app/chat/sse_emitter`
+    - `/ai/manus/chat`
+  - 作用：
+    - 对外暴露多种输出协议与 Agent 能力入口
+    - 支持“打字机效果”SSE 输出
+
+### 主要测试覆盖
+
+- `src/test/java/com/kiwi/keweiaiagent/controller/AiControllerTest.java`
+  - 验证 `sse_emitter` 的事件流输出和 done 收尾事件
+- `src/test/java/com/kiwi/keweiaiagent/agent/BaseAgentTest.java`
+  - 覆盖状态校验、空参数、同步执行、流式执行、异常分支
+- `src/test/java/com/kiwi/keweiaiagent/agent/ToolCallAgentTest.java`
+  - 覆盖“next step 不重复注入”和工具计划摘要逻辑
+- `src/test/java/com/kiwi/keweiaiagent/agent/KeweiManusTest.java`
+  - 验证 Manus Agent 端到端执行可用
+
+### 阶段结果
+
+- 主应用已具备可复用的 Agent 抽象层与 ReAct 执行模型
+- 工具调用从“单轮工具触发”升级为“多步 Agent 任务执行”
+- 控制器已统一支持同步/流式/Agent 入口，接口能力更完整
+- Agent 关键分支具备测试覆盖，后续扩展基础更稳固
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -1087,6 +1383,8 @@
 - 已引入自定义 RAG 增强链路（查询预处理、状态过滤检索、关键词增强、增量入库）
 - 已完成工具调用能力接入（文件、搜索、抓取、下载、PDF 转图）并验证基础测试链路
 - 已扩展工具生态（邮件发送、时间查询）并完成注册方式升级（Bean 注入式）
+- 已接入 MCP 客户端与双图像 MCP 服务（搜索/生成），完成主应用联调与路径化结果返回
+- 已完成 Agent 化拓展（BaseAgent/ReAct/ToolCall/KeweiManus）并开放多种流式控制器接口
 
 ## 后续进度补充方式（约定）
 
