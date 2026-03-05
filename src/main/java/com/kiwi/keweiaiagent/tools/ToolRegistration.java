@@ -18,7 +18,8 @@ public class ToolRegistration {
             ResourceDownloadTool resourceDownloadTool,
             TimeTool timeTool,
             WebSearchTool webSearchTool,
-            WebScrapingTool webScrapingTool
+            WebScrapingTool webScrapingTool,
+            TerminateTool terminateTool
     ){
         return ToolCallbacks.from(
                 emailTool,
@@ -27,7 +28,8 @@ public class ToolRegistration {
                 resourceDownloadTool,
                 timeTool,
                 webSearchTool,
-                webScrapingTool
+                webScrapingTool,
+                terminateTool
         );
     }
 }

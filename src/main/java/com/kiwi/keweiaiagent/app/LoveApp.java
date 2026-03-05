@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -87,6 +88,21 @@ public class LoveApp {
         assert chatResponse != null;
         String content = chatResponse.getResult().getOutput().getText();
         return content;
+    }
+
+    /**
+     * AI 基础聊天接口，输入用户消息和会话ID，输出AI回复内容,流式输出版本
+     * @param message
+     * @param chatId
+     * @return
+     */
+    public Flux<String> doChatWithStream(String message, String chatId){
+        return chatClient
+                .prompt()
+                .user(message)
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .stream()
+                .content();
     }
 
     /**
