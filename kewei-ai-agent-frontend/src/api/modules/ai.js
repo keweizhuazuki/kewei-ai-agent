@@ -15,3 +15,9 @@ export function uploadLoveImage(formData) {
     timeout: 120000,
   })
 }
+
+export function continueManusChat(payload) {
+  return http.post('/ai/manus/chat/continue', payload, {
+    timeout: 180000,
+  })
+}

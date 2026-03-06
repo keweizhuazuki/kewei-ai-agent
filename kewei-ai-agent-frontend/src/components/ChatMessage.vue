@@ -94,6 +94,15 @@ const htmlContent = computed(() => renderAssistantContent(message.value.content 
   margin: 0 0 8px;
 }
 
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 22px;
+}
+
+.markdown-body :deep(li) {
+  margin: 0 0 6px;
+}
+
 .markdown-body :deep(pre) {
   background: #fff6ee;
   border-radius: 10px;

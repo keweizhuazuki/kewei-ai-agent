@@ -4,6 +4,9 @@ import com.kiwi.keweiaiagent.agent.model.AgentState;
 import com.kiwi.keweiaiagent.exception.BusinessException;
 import com.kiwi.keweiaiagent.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
+import org.springaicommunity.agent.tools.AskUserQuestionTool;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -75,6 +78,14 @@ class BaseAgentTest {
         assertTrue(waitForState(agent, AgentState.ERROR));
     }
 
+    @Test
+    void runStreamShouldWaitForUserInputWhenQuestionIsRaised() throws InterruptedException {
+        BaseAgent agent = new WaitingAgent();
+        agent.runStream("hello");
+
+        assertTrue(waitForState(agent, AgentState.WAITING_FOR_USER_INPUT));
+    }
+
     private static class TestAgent extends BaseAgent {
         @Override
         public String step() {
@@ -87,6 +98,18 @@ class BaseAgentTest {
         @Override
         public String step() {
             throw new BusinessException(ErrorCode.AGENT_RUN_FAILED, "step failed");
+        }
+    }
+
+    private static class WaitingAgent extends BaseAgent {
+        @Override
+        public String step() {
+            throw new PendingUserQuestionException(List.of(
+                    new AskUserQuestionTool.Question("question", "header", List.of(
+                            new AskUserQuestionTool.Question.Option("A", "A"),
+                            new AskUserQuestionTool.Question.Option("B", "B")
+                    ), false)
+            ));
         }
     }
 

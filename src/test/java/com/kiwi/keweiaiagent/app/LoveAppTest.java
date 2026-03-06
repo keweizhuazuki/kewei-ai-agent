@@ -127,13 +127,36 @@ class LoveAppTest {
 //        // 测试网站抓取
 //        testMessage("最近和对象吵架了，看看力扣（leetcode.cn）的其他情侣是怎么解决问题的？");
 
-        // 测试资源下载
-        testMessage("下载一张适合做手机壁纸的星空情侣图片为文件到/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/tmp/download");
-
-        // 测试pdf转jpg
-        testMessage("/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/tmp/pdfs下的所有pdf都转换成jpg图片");
-
-        //
+//        // 测试资源下载
+//        testMessage("下载一张适合做手机壁纸的星空情侣图片为文件到/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/tmp/download");
+//
+//        // 测试pdf转jpg
+//        testMessage("/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/tmp/pdfs下的所有pdf都转换成jpg图片");
+          // 测试制作ppt
+        testMessage("""
+                    帮我直接调用PptWriterTool生成PPT，不要追问。
+                    title=如何让女朋友更爱我
+                    outputPath=tmp/ppt/love-guide.pptx
+                    slidesMarkdown=
+                    ## 送礼物
+                    - 选择她真正喜欢的礼物
+                    - 仪式感比价格更重要
+                    - 结合她最近需求准备小礼物
+                    Notes: 强调用心比价格更重要。
+                    
+                    ## 制造惊喜
+                    - 提前准备小而具体的惊喜
+                    - 关注她最近的情绪和节奏
+                    - 避免让惊喜变成压力
+                    Notes: 惊喜要自然贴心。
+                    
+                    ## 日常相处的注意事项
+                    - 多倾听少说教
+                    - 尊重边界和情绪
+                    - 稳定表达关心和认可
+                    Notes: 长期稳定比短期热情更重要。
+                    """
+                    );
     }
 
     private void testMessage(String message) {

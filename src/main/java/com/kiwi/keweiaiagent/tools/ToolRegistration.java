@@ -1,5 +1,6 @@
 package com.kiwi.keweiaiagent.tools;
 
+import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
@@ -19,7 +20,9 @@ public class ToolRegistration {
             TimeTool timeTool,
             WebSearchTool webSearchTool,
             WebScrapingTool webScrapingTool,
-            TerminateTool terminateTool
+            TerminateTool terminateTool,
+            AskUserQuestionTool askUserQuestionTool,
+            PptWriterTool pptWriterTool
     ){
         return ToolCallbacks.from(
                 emailTool,
@@ -29,7 +32,9 @@ public class ToolRegistration {
                 timeTool,
                 webSearchTool,
                 webScrapingTool,
-                terminateTool
+                terminateTool,
+                askUserQuestionTool,
+                pptWriterTool
         );
     }
 }

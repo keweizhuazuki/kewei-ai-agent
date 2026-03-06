@@ -112,6 +112,10 @@ public class ToolCallAgent extends ReActAgent{
 
         ToolResponseMessage toolResponseMessage = (ToolResponseMessage) CollUtil.getLast(toolExecutionResult.conversationHistory());
 
+        if (hasPendingUserInput(toolResponseMessage)) {
+            throw new PendingUserQuestionException(List.of());
+        }
+
         // 判断是否调用终止工具
         boolean doTerminate = toolResponseMessage.getResponses().stream()
                 .anyMatch(response -> response.name().equals("doTerminate"));
@@ -147,6 +151,14 @@ public class ToolCallAgent extends ReActAgent{
         }
     }
 
+    @Override
+    protected String resumeStep() {
+        if (toolCallChatResponse != null && toolCallChatResponse.hasToolCalls()) {
+            return act();
+        }
+        return step();
+    }
+
     private String buildSystemPrompt() {
         String systemPrompt = StrUtil.blankToDefault(getSystemPrompt(), "");
         String nextStepPrompt = StrUtil.blankToDefault(getNextStepPrompt(), "");
@@ -168,5 +180,14 @@ public class ToolCallAgent extends ReActAgent{
                 .map(AssistantMessage.ToolCall::name)
                 .collect(Collectors.joining(" -> "));
         return "计划执行工具链: " + tools + "；完成后会汇总结果。";
+    }
+
+    boolean hasPendingUserInput(ToolResponseMessage toolResponseMessage) {
+        if (toolResponseMessage == null || CollUtil.isEmpty(toolResponseMessage.getResponses())) {
+            return false;
+        }
+        return toolResponseMessage.getResponses().stream().anyMatch(response ->
+                "AskUserQuestionTool".equals(response.name())
+                        && StrUtil.containsIgnoreCase(StrUtil.blankToDefault(response.responseData(), ""), "pending user input"));
     }
 }

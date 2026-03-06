@@ -6,6 +6,8 @@ public enum AgentState {
 
     RUNNING,
 
+    WAITING_FOR_USER_INPUT,
+
     FINISHED,
 
     ERROR

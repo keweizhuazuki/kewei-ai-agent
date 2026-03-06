@@ -10,6 +10,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 
 import java.util.List;
 
@@ -59,5 +60,15 @@ class ToolCallAgentTest {
         assertTrue(summary.contains("searchWebsite"));
         assertTrue(summary.contains("scrapeWebsite"));
         assertTrue(summary.contains("完成后会汇总结果"));
+    }
+
+    @Test
+    void shouldDetectPendingUserInputFromAskUserQuestionToolResponse() {
+        ToolCallAgent agent = new ToolCallAgent(new ToolCallback[0]);
+        ToolResponseMessage message = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse("1", "AskUserQuestionTool", "Pending user input")))
+                .build();
+
+        assertTrue(agent.hasPendingUserInput(message));
     }
 }

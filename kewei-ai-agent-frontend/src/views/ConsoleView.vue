@@ -125,6 +125,26 @@ async function runDebug() {
     await new Promise((resolve, reject) => {
       let content = ''
       let settled = false
+      let timeoutId = null
+
+      const clearIdleTimeout = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+      }
+
+      const refreshIdleTimeout = () => {
+        clearIdleTimeout()
+        timeoutId = setTimeout(() => {
+          if (settled) return
+          settled = true
+          conn.close()
+          if (content) resolve()
+          else reject(new Error('SSE 调试超时'))
+        }, 45000)
+      }
+
       const conn = openSSE({
         path:
           debug.mode === 'sse'
@@ -137,30 +157,29 @@ async function runDebug() {
             ? { message: debug.message }
             : { message: debug.message, chatId: debug.chatId || store.currentChatId },
         withNamedEvents: debug.mode === 'sse_emitter',
+        onOpen: () => {
+          refreshIdleTimeout()
+        },
         onMessage: (chunk) => {
+          refreshIdleTimeout()
           content += chunk
           debugOutput.value = content
         },
         onDone: () => {
           if (settled) return
           settled = true
+          clearIdleTimeout()
           resolve()
         },
         onError: () => {
           if (settled) return
           settled = true
+          clearIdleTimeout()
           reject(new Error('SSE 调试失败'))
         },
       })
 
-      // 防止部分无 done 事件导致挂起
-      setTimeout(() => {
-        if (settled) return
-        settled = true
-        conn.close()
-        if (content) resolve()
-        else reject(new Error('SSE 调试超时'))
-      }, 45000)
+      refreshIdleTimeout()
     })
 
     store.addLog({ endpoint: debug.mode, status: 'success', elapsed: Date.now() - start })

@@ -37,6 +37,10 @@ public abstract class BaseAgent {
 
     private int maxSteps = 10;
 
+    private String sessionId;
+
+    private ManusSessionStore manusSessionStore;
+
     // llm 大模型
     private ChatClient chatClient;
 
@@ -92,12 +96,27 @@ public abstract class BaseAgent {
         this.state = AgentState.RUNNING;
         messageList.add(new UserMessage(userPrompt));
 
+        return executeStreamLoop(sseEmitter, false);
+    }
+
+    public SseEmitter resumeStream() {
+        validateResumeState();
+        SseEmitter sseEmitter = new SseEmitter(300000L);
+        this.state = AgentState.RUNNING;
+        return executeStreamLoop(sseEmitter, true);
+    }
+
+    private SseEmitter executeStreamLoop(SseEmitter sseEmitter, boolean resumePendingStep) {
         CompletableFuture.runAsync(() -> {
+            boolean activateSession = manusSessionStore != null && StringUtils.hasText(sessionId);
             try {
+                if (activateSession) {
+                    manusSessionStore.activateSession(sessionId);
+                }
                 for(int i = 0; i < maxSteps && state != AgentState.FINISHED; i++){
                     currentStep = i + 1;
                     log.info("Agent {} executing step {}/{}", name, currentStep, maxSteps);
-                    String stepResult = step();
+                    String stepResult = (resumePendingStep && i == 0) ? resumeStep() : step();
                     String result = String.format("Step %d result: %s", currentStep, stepResult);
                     sseEmitter.send(SseEmitter.event().name("message").data(result));
                 }
@@ -110,6 +129,10 @@ public abstract class BaseAgent {
                 }
                 sseEmitter.send(SseEmitter.event().name("done").data("[DONE]"));
                 sseEmitter.complete();
+            } catch (PendingUserQuestionException e) {
+                state = AgentState.WAITING_FOR_USER_INPUT;
+                sendQuestionEvent(sseEmitter, e);
+                sseEmitter.complete();
             } catch (BusinessException e) {
                 state = AgentState.ERROR;
                 log.error("Agent {} runStream failed: {}", name, e.getMessage(), e);
@@ -121,7 +144,12 @@ public abstract class BaseAgent {
                 sendErrorEvent(sseEmitter, String.format("Agent %s error: %s", name, e.getMessage()));
                 sseEmitter.completeWithError(e);
             } finally {
-                cleanup();
+                if (activateSession) {
+                    manusSessionStore.clearActiveSession();
+                }
+                if (state != AgentState.WAITING_FOR_USER_INPUT) {
+                    cleanup();
+                }
             }
         });
 
@@ -136,7 +164,9 @@ public abstract class BaseAgent {
             if(state == AgentState.RUNNING){
                 this.state = AgentState.FINISHED;
             }
-            this.cleanup();
+            if (state != AgentState.WAITING_FOR_USER_INPUT) {
+                this.cleanup();
+            }
                 log.info("Agent {} runStream completed with state {}", name, state);
         });
 
@@ -152,6 +182,12 @@ public abstract class BaseAgent {
         }
     }
 
+    private void validateResumeState() {
+        if (this.state != AgentState.WAITING_FOR_USER_INPUT) {
+            throw new BusinessException(ErrorCode.INVALID_PARAM, "当前会话不处于待回答状态");
+        }
+    }
+
     private String formatErrorMessage(BusinessException e) {
         return String.format("Agent %s error: %s", name, e.getMessage());
     }
@@ -164,10 +200,33 @@ public abstract class BaseAgent {
         }
     }
 
+    private void sendQuestionEvent(SseEmitter sseEmitter, PendingUserQuestionException exception) {
+        try {
+            Object payload = exception.getQuestions();
+            if (manusSessionStore != null && StringUtils.hasText(sessionId)) {
+                payload = new QuestionEventPayload(manusSessionStore.getPendingQuestions(sessionId));
+            }
+            sseEmitter.send(SseEmitter.event().name("question").data(payload));
+        } catch (IOException ioException) {
+            log.warn("Agent {} failed to send question event: {}", name, ioException.getMessage(), ioException);
+        }
+    }
+
     public abstract String step();
+
+    protected String resumeStep() {
+        return step();
+    }
 
     protected void cleanup(){
         // 清理资源，重置状态等
+        if ((state == AgentState.FINISHED || state == AgentState.ERROR)
+                && manusSessionStore != null
+                && StringUtils.hasText(sessionId)) {
+            manusSessionStore.removeSession(sessionId);
+        }
     }
+
+    public record QuestionEventPayload(Object questions) {}
 
 }

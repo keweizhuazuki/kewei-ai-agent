@@ -62,6 +62,51 @@
       </div>
 
       <div class="chat-input-wrap">
+        <div v-if="pendingQuestions.length" class="question-panel">
+          <div class="question-panel__header">
+            <strong>需要补充信息</strong>
+            <span>回答后会继续执行 Manus</span>
+          </div>
+          <div v-for="question in pendingQuestions" :key="question.id" class="question-item">
+            <label :for="question.id">{{ question.header || '问题' }}</label>
+            <p class="question-item__text">{{ question.question }}</p>
+
+            <select
+              v-if="question.options?.length && !question.multiSelect"
+              :id="question.id"
+              v-model="pendingAnswers[question.id]"
+            >
+              <option value="">请选择</option>
+              <option v-for="option in question.options" :key="option.label" :value="option.label">
+                {{ option.label }}
+              </option>
+            </select>
+
+            <div v-else-if="question.options?.length && question.multiSelect" class="question-item__options">
+              <label v-for="option in question.options" :key="option.label" class="question-option">
+                <input
+                  type="checkbox"
+                  :checked="isMultiSelected(question.id, option.label)"
+                  @change="toggleMultiAnswer(question.id, option.label, $event.target.checked)"
+                />
+                <span>{{ option.label }}</span>
+              </label>
+            </div>
+
+            <textarea
+              v-else
+              :id="question.id"
+              v-model="pendingAnswers[question.id]"
+              rows="2"
+              placeholder="请输入回答"
+            />
+          </div>
+          <div class="question-panel__actions">
+            <button class="btn-outline" type="button" :disabled="sending" @click="resetPendingQuestions">新开对话</button>
+            <button class="btn" type="button" :disabled="sending || !canSubmitPendingAnswers" @click="submitPendingAnswers">继续执行</button>
+          </div>
+        </div>
+
         <div v-if="pendingAttachment" class="pending-attachment">
           <img :src="pendingAttachment.previewUrl" :alt="pendingAttachment.fileName" />
           <div class="pending-meta">
@@ -75,6 +120,7 @@
           v-model="input"
           rows="4"
           placeholder="有问题尽管问。支持图片 + 文本一起发送（Enter 发送，Shift+Enter 换行）"
+          :disabled="store.activeApp === 'manus' && pendingQuestions.length > 0"
           @keydown="handleInputKeydown"
         />
 
@@ -83,7 +129,7 @@
           <div class="send-actions">
             <input ref="fileInput" type="file" accept="image/*" class="file-input" @change="handleFileChange" />
             <button class="btn-outline" type="button" :disabled="sending || uploading" @click="triggerUpload">上传图片</button>
-            <button class="btn" type="button" :disabled="sending || uploading || (!input.trim() && !pendingAttachment)" @click="send">发送</button>
+            <button class="btn" type="button" :disabled="sending || uploading || (store.activeApp === 'manus' && pendingQuestions.length > 0) || (!input.trim() && !pendingAttachment)" @click="send">发送</button>
           </div>
         </div>
       </div>
@@ -97,7 +143,7 @@ import { useRoute } from 'vue-router'
 import AppPill from '../components/AppPill.vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import { loveChatSync, uploadLoveImage } from '../api/modules/ai'
-import { openSSE } from '../api/sse'
+import { openFetchSSE, openSSE } from '../api/sse'
 import { useAppStore } from '../stores/app'
 import { uid } from '../utils/uid'
 
@@ -111,6 +157,9 @@ const selectedChatId = ref(store.currentChatId)
 const messageBox = ref(null)
 const messages = ref([])
 const fileInput = ref(null)
+const pendingQuestions = ref([])
+const pendingAnswers = ref({})
+const pendingQuestionMessageId = ref('')
 let currentSSE = null
 
 const modeOptions = computed(() => {
@@ -195,6 +244,11 @@ function patchMessage(id, patch) {
   }
 }
 
+const canSubmitPendingAnswers = computed(() => pendingQuestions.value.every((question) => {
+  const answer = pendingAnswers.value[question.id]
+  return Array.isArray(answer) ? answer.length > 0 : Boolean(String(answer || '').trim())
+}))
+
 async function send() {
   if (sending.value || (!input.value.trim() && !pendingAttachment.value)) return
 
@@ -207,15 +261,19 @@ async function send() {
   const user = addMessage('user', question || '请解释这张图片', 'done', {
     attachments: attachment ? [attachment] : [],
   })
-  const assistant = addMessage('assistant', '', 'loading', {
+  const assistant = addMessage('assistant', store.activeApp === 'manus' ? '正在分析任务…' : '', 'loading', {
     retryPayload: { question, attachment, chatId: store.currentChatId, app: store.activeApp, userId: user.id },
   })
+  if (store.activeApp === 'manus') {
+    pendingQuestionMessageId.value = assistant.id
+  }
 
   sending.value = true
   const start = Date.now()
 
   try {
     store.addChatId(store.currentChatId)
+    clearPendingQuestions()
 
     if (store.activeApp === 'love' && store.chatMode === 'sync') {
       const res = await loveChatSync(buildLoveParams(messageForAi, attachment))
@@ -239,9 +297,10 @@ async function send() {
       messageId: assistant.id,
       endpoint,
       params,
-      withNamedEvents: store.activeApp === 'love' && store.chatMode === 'sse_emitter',
+      withNamedEvents: store.activeApp === 'manus' || (store.activeApp === 'love' && store.chatMode === 'sse_emitter'),
       timeoutMs: store.activeApp === 'manus' ? 240000 : 45000,
       typewriter: store.activeApp === 'manus',
+      onQuestion: handlePendingQuestion,
     })
 
     store.addLog({ endpoint, status: 'success', elapsed: Date.now() - start })
@@ -261,10 +320,11 @@ async function send() {
   }
 }
 
-function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 45000, typewriter = false }) {
+function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 45000, typewriter = false, onQuestion, opener }) {
   return new Promise((resolve, reject) => {
     let finalText = ''
     let settled = false
+    let receivedQuestion = false
     let timeoutId = null
     let timerId = null
     const queue = []
@@ -274,6 +334,38 @@ function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 
         clearInterval(timerId)
         timerId = null
       }
+    }
+
+    const clearIdleTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    }
+
+    const refreshIdleTimeout = () => {
+      if (timeoutMs <= 0) return
+      clearIdleTimeout()
+      timeoutId = setTimeout(() => {
+        if (settled) return
+        settled = true
+        while (queue.length) {
+          finalText += queue.shift()
+        }
+        clearTimer()
+        currentSSE?.close()
+        if (receivedQuestion) {
+          patchMessage(messageId, { status: 'done' })
+          resolve({ receivedQuestion: true })
+          return
+        }
+        if (finalText) {
+          patchMessage(messageId, { content: finalText, status: 'done' })
+          resolve({ receivedQuestion: false })
+          return
+        }
+        reject(new Error('SSE 长时间无响应，请重试'))
+      }, timeoutMs)
     }
 
     const startTypewriter = () => {
@@ -290,11 +382,15 @@ function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 
     }
 
     currentSSE?.close()
-    currentSSE = openSSE({
+    currentSSE = (opener || openSSE)({
       path: endpoint,
       params,
       withNamedEvents,
+      onOpen: () => {
+        refreshIdleTimeout()
+      },
       onMessage: (chunk) => {
+        refreshIdleTimeout()
         if (typewriter) {
           queue.push(...chunk.split(''))
           startTypewriter()
@@ -303,46 +399,49 @@ function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 
           patchMessage(messageId, { content: finalText, status: 'loading' })
         }
       },
+      onQuestion: (raw) => {
+        refreshIdleTimeout()
+        receivedQuestion = true
+        let parsed = null
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          parsed = null
+        }
+        onQuestion?.(parsed || raw)
+      },
       onDone: () => {
         if (settled) return
         settled = true
-        if (timeoutId) clearTimeout(timeoutId)
+        clearIdleTimeout()
         if (typewriter && queue.length) {
           finalText += queue.join('')
           queue.length = 0
         }
         clearTimer()
+        if (receivedQuestion && !finalText) {
+          patchMessage(messageId, { status: 'done' })
+          resolve({ receivedQuestion: true })
+          return
+        }
         patchMessage(messageId, { content: finalText || '(empty)', status: 'done' })
-        resolve()
+        resolve({ receivedQuestion: receivedQuestion })
       },
       onError: () => {
         if (settled) return
         settled = true
-        if (timeoutId) clearTimeout(timeoutId)
+        clearIdleTimeout()
         clearTimer()
+        if (receivedQuestion) {
+          patchMessage(messageId, { status: 'done' })
+          resolve({ receivedQuestion: true })
+          return
+        }
         reject(new Error('SSE 连接失败，请检查后端接口'))
       },
     })
 
-    if (timeoutMs > 0) {
-      timeoutId = setTimeout(() => {
-        if (settled) return
-        settled = true
-        if (sending.value && (finalText || queue.length)) {
-          while (queue.length) {
-            finalText += queue.shift()
-          }
-          clearTimer()
-          patchMessage(messageId, { content: finalText, status: 'done' })
-          currentSSE?.close()
-          resolve()
-        } else {
-          clearTimer()
-          currentSSE?.close()
-          reject(new Error('SSE 长时间无响应，请重试'))
-        }
-      }, timeoutMs)
-    }
+    refreshIdleTimeout()
   })
 }
 
@@ -354,6 +453,99 @@ function retryMessage(message) {
     store.setActiveApp(message.retryPayload.app)
   }
   send()
+}
+
+async function submitPendingAnswers() {
+  if (!pendingQuestions.value.length || sending.value) return
+
+  const previousQuestions = pendingQuestions.value
+  const previousAnswers = pendingAnswers.value
+  const answerMap = Object.fromEntries(
+    Object.entries(pendingAnswers.value).map(([key, value]) => [key, Array.isArray(value) ? value.join(', ') : value]),
+  )
+
+  const assistantId = pendingQuestionMessageId.value || addMessage('assistant', '已收到补充信息，正在继续处理…', 'loading').id
+  patchMessage(assistantId, { content: '已收到补充信息，正在继续处理…', status: 'loading' })
+  sending.value = true
+  pendingQuestions.value = []
+  pendingAnswers.value = {}
+
+  try {
+    const result = await sendViaSSE({
+      messageId: assistantId,
+      endpoint: '/ai/manus/chat/continue',
+      params: undefined,
+      withNamedEvents: true,
+      timeoutMs: 240000,
+      typewriter: true,
+      onQuestion: handlePendingQuestion,
+      opener: ({ path, onOpen, onMessage, onQuestion, onDone, onError }) => openFetchSSE({
+        path,
+        method: 'POST',
+        body: {
+          chatId: store.currentChatId,
+          answers: answerMap,
+        },
+        onOpen,
+        onMessage,
+        onQuestion,
+        onDone,
+        onError,
+      }),
+    })
+    if (!result?.receivedQuestion) {
+      clearPendingQuestions()
+    }
+  } catch (error) {
+    pendingQuestions.value = previousQuestions
+    pendingAnswers.value = previousAnswers
+    pendingQuestionMessageId.value = assistantId
+    patchMessage(assistantId, {
+      content: error.message || '继续执行失败',
+      status: 'error',
+    })
+  } finally {
+    sending.value = false
+  }
+}
+
+function clearPendingQuestions() {
+  pendingQuestions.value = []
+  pendingAnswers.value = {}
+  pendingQuestionMessageId.value = ''
+}
+
+function resetPendingQuestions() {
+  clearPendingQuestions()
+  if (store.activeApp === 'manus') {
+    newChat()
+  }
+}
+
+function handlePendingQuestion(payload) {
+  const questions = Array.isArray(payload?.questions) ? payload.questions : []
+  pendingQuestions.value = questions
+  pendingAnswers.value = Object.fromEntries(questions.map((question) => [question.id, question.multiSelect ? [] : '']))
+  const messageId = pendingQuestionMessageId.value || addMessage('assistant', '请先回答以下问题后继续。', 'done').id
+  pendingQuestionMessageId.value = messageId
+  patchMessage(messageId, {
+    content: '请先回答以下问题后继续。',
+    status: 'done',
+  })
+}
+
+function isMultiSelected(questionId, label) {
+  const current = pendingAnswers.value[questionId]
+  return Array.isArray(current) && current.includes(label)
+}
+
+function toggleMultiAnswer(questionId, label, checked) {
+  const current = Array.isArray(pendingAnswers.value[questionId]) ? [...pendingAnswers.value[questionId]] : []
+  const next = checked ? [...current, label] : current.filter((item) => item !== label)
+  pendingAnswers.value = {
+    ...pendingAnswers.value,
+    [questionId]: next,
+  }
 }
 
 function handleInputKeydown(event) {
@@ -443,7 +635,7 @@ function buildLoveParams(message, attachment) {
 }
 
 function buildManusParams(message, attachment) {
-  const params = { message }
+  const params = { message, chatId: store.currentChatId }
   if (attachment?.filePath) {
     params.option = 'image'
     params.imagePath = attachment.filePath
@@ -505,6 +697,66 @@ function buildManusParams(message, attachment) {
   border-top: 1px solid var(--border);
   padding: var(--space-3) var(--space-4) var(--space-4);
   background: rgba(255, 255, 255, 0.62);
+}
+
+.question-panel {
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid rgba(229, 103, 67, 0.2);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 247, 239, 0.98), rgba(255, 241, 229, 0.95));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.question-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+
+.question-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question-item label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-deep);
+}
+
+.question-item__text {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.question-item__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.question-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.question-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .pending-attachment {

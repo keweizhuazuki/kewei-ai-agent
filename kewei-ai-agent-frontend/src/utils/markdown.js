@@ -29,6 +29,39 @@ function preprocessManusText(input) {
   // link 字段转为可点击 markdown 链接
   text = text.replace(/link:\s*(https?:\/\/\S+)/g, (m, url) => `link: [${url}](${url})`)
 
+  // 把粘连在正文中的 markdown 标题拆开
+  text = text
+    .replace(/([^\n])\s*(#{2,6}\s+)/g, '$1\n\n$2')
+    .replace(/(#{2,6}\s*[^\n#]+?)\s*(?=#{2,6}\s|(?:\d+\.|[-*]\s|✅|☑️|✔️))/g, '$1\n')
+
+  // 把常见列表项从长段落中拆出来
+  text = text
+    .replace(/([^\n])\s*(\d+\.\s+)/g, '$1\n$2')
+    .replace(/([^\n])\s+(✅|☑️|✔️)\s*/g, '$1\n- ')
+
+  // 处理 ")- 🎯" 这种粘连条目，避免出现空的 "-" 列表项
+  text = text
+    .replace(/([^\n])\s*-\s*(?=📝|🎯|💰|⚠️|📊|📁|📌|✨|🔥|📍)/g, '$1\n')
+    .replace(/([^\n])\s*(📝|🎯|💰|⚠️|📊|📁|📌|✨|🔥|📍)\s*/g, '$1\n- $2 ')
+    .replace(/^(📝|🎯|💰|⚠️|📊|📁|📌|✨|🔥|📍)\s*/gm, '- $1 ')
+
+  // 文件路径和后续说明粘连时，补一个换行
+  text = text.replace(/(\.(?:md|txt|pdf|pptx|docx))(?=[^\s/\n])/gi, '$1\n')
+
+  // 标题后的冒号如果直接跟正文，补一个换行，避免整段都被当作标题/粗体后的正文粘连
+  text = text
+    .replace(/(##+\s[^\n:：]+[:：])\s*/g, '$1\n')
+    .replace(/(\*\*[^*\n]+[:：]\*\*)\s*/g, '$1\n')
+
+  // 冒号后的“主要内容/亮点/建议”类字段，如果紧跟序号或勾选项，拆成块状列表
+  text = text
+    .replace(/([:：])\s*(?=\d+\.\s)/g, '$1\n')
+    .replace(/([:：])\s*(?=📝|🎯|💰|⚠️|📊|📁|📌|✨|🔥|📍)/g, '$1\n')
+    .replace(/([:：])\s*(?=✅|☑️|✔️)/g, '$1\n')
+
+  // 连续空行收敛，避免过度拆分
+  text = text.replace(/\n{3,}/g, '\n\n').trim()
+
   return text
 }
 

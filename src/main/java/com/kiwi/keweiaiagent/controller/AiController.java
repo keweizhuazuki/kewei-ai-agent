@@ -1,10 +1,13 @@
 package com.kiwi.keweiaiagent.controller;
 
 import com.kiwi.keweiaiagent.agent.KeweiManus;
+import com.kiwi.keweiaiagent.agent.ManusSessionService;
 import com.kiwi.keweiaiagent.app.LoveApp;
 import com.kiwi.keweiaiagent.constant.FileConstant;
 import com.kiwi.keweiaiagent.exception.BusinessException;
 import com.kiwi.keweiaiagent.exception.ErrorCode;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Resource;
 import org.springframework.util.StringUtils;
 import org.springframework.ai.chat.model.ChatModel;
@@ -13,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -36,7 +40,6 @@ import java.util.concurrent.Executors;
 public class AiController {
 
     private static final long DEFAULT_SSE_TIMEOUT = 0L;
-    private static final long TYPEWRITER_DELAY_MILLIS = 35L;
 
     @Resource
     private LoveApp loveApp;
@@ -47,9 +50,17 @@ public class AiController {
     @Resource
     private ChatModel ollamaChatModel;
 
+    @Resource
+    private ObjectMapper objectMapper;
+
+    @Resource
+    private ManusSessionService manusSessionService;
 
     @GetMapping("/love_app/chat/sync")
-    public String doChatWithLoveAppSync(String message, String chatId, String option, String imagePath){
+    public Object doChatWithLoveAppSync(String message, String chatId, String option, String imagePath){
+        if (shouldUseSkillsOption(option)) {
+            return loveApp.callWithSkills(message, chatId);
+        }
         if (shouldUseImageOption(option, imagePath)) {
             return loveApp.doChatWithImage(message, chatId, imagePath);
         }
@@ -58,6 +69,10 @@ public class AiController {
 
     @GetMapping(value = "/love_app/chat/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> doChatWithLoveAppSSE(String message, String chatId, String option, String imagePath){
+        if (shouldUseSkillsOption(option)) {
+            return loveApp.streamWithSkills(message, chatId)
+                    .map(this::toJson);
+        }
         if (shouldUseImageOption(option, imagePath)) {
             return loveApp.doChatWithImageStream(message, chatId, imagePath);
         }
@@ -65,8 +80,13 @@ public class AiController {
     }
 
     @GetMapping(value = "/love_app/chat/server_sent_event")
-    public Flux<ServerSentEvent<String>> zdoChatWithLoveAppServerSentEvent(String message, String chatId){
-        return loveApp.doChatWithStream(message,chatId)
+    public Flux<ServerSentEvent<String>> zdoChatWithLoveAppServerSentEvent(String message, String chatId, String option, String imagePath){
+        Flux<String> contentFlux = shouldUseSkillsOption(option)
+                ? loveApp.streamWithSkills(message, chatId).map(this::toJson)
+                : shouldUseImageOption(option, imagePath)
+                ? loveApp.doChatWithImageStream(message, chatId, imagePath)
+                : loveApp.doChatWithStream(message, chatId);
+        return contentFlux
                 .map(chunk->ServerSentEvent.<String>builder()
                         .data(chunk)
                         .build());
@@ -78,17 +98,23 @@ public class AiController {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
             try {
-                Flux<String> resultFlux = shouldUseImageOption(option, imagePath)
+                Flux<String> resultFlux = shouldUseSkillsOption(option)
+                        ? loveApp.streamWithSkills(message, chatId).map(this::toJson)
+                        : shouldUseImageOption(option, imagePath)
                         ? loveApp.doChatWithImageStream(message, chatId, imagePath)
                         : loveApp.doChatWithStream(message, chatId);
 
                 for (String chunk : resultFlux.toIterable()) {
-                    sendChunkAsTypewriter(emitter, chunk);
+                    emitter.send(SseEmitter.event().name("message").data(chunk));
                 }
                 emitter.send(SseEmitter.event().name("done").data("[DONE]"));
                 emitter.complete();
             } catch (Exception e) {
-                emitter.completeWithError(e);
+                if (!isClientDisconnect(e)) {
+                    emitter.completeWithError(e);
+                } else {
+                    emitter.complete();
+                }
             } finally {
                 executor.shutdown();
             }
@@ -96,18 +122,34 @@ public class AiController {
         return emitter;
     }
 
-    private void sendChunkAsTypewriter(SseEmitter emitter, String chunk) throws IOException, InterruptedException {
-        for (char c : chunk.toCharArray()) {
-            emitter.send(SseEmitter.event().name("message").data(String.valueOf(c)));
-            Thread.sleep(TYPEWRITER_DELAY_MILLIS);
+    private boolean isClientDisconnect(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof IOException) {
+                return true;
+            }
+            if (current instanceof IllegalStateException && current.getMessage() != null) {
+                String message = current.getMessage();
+                if (message.contains("ResponseBodyEmitter has already completed")
+                        || message.contains("Broken pipe")
+                        || message.contains("broken pipe")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
         }
+        return false;
     }
 
 
     @GetMapping("manus/chat")
-    public SseEmitter doChatWithManus(String message, String option, String imagePath){
-        // Manus 当前为通用对话入口，先兼容 option 参数，后续可扩展图片专用流程
-        return new KeweiManus(allTools, ollamaChatModel).runStream(message);
+    public SseEmitter doChatWithManus(String message, String chatId, String option, String imagePath){
+        return manusSessionService.startChatStream(chatId, message);
+    }
+
+    @PostMapping(value = "manus/chat/continue", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter continueChatWithManus(@RequestBody ManusContinueRequest request) {
+        return manusSessionService.continueChatStream(request.chatId(), request.answers());
     }
 
     @PostMapping(value = "/love_app/image/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -162,5 +204,19 @@ public class AiController {
     private boolean shouldUseImageOption(String option, String imagePath) {
         return "image".equalsIgnoreCase(option) && StringUtils.hasText(imagePath);
     }
+
+    private boolean shouldUseSkillsOption(String option) {
+        return "skills".equalsIgnoreCase(option);
+    }
+
+    private String toJson(LoveApp.SkillChatResult result) {
+        try {
+            return objectMapper.writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize skill result", e);
+        }
+    }
+
+    public record ManusContinueRequest(String chatId, Map<String, String> answers) {}
 
 }

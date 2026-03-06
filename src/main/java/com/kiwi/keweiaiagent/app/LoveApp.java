@@ -10,6 +10,7 @@ import com.kiwi.keweiaiagent.tools.WebScrapingTool;
 import com.kiwi.keweiaiagent.tools.WebSearchTool;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springaicommunity.agent.tools.SkillsTool;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
@@ -17,6 +18,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -28,6 +30,8 @@ import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.List;
 
 import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
@@ -35,6 +39,26 @@ import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
 @Component
 @Slf4j
 public class LoveApp {
+
+    public enum SkillChatResultType {
+        TEXT,
+        QUESTION,
+        FILE
+    }
+
+    public record SkillChatResult(SkillChatResultType type, String content, String filePath, String question) {
+        public static SkillChatResult text(String content) {
+            return new SkillChatResult(SkillChatResultType.TEXT, content, null, null);
+        }
+
+        public static SkillChatResult question(String question) {
+            return new SkillChatResult(SkillChatResultType.QUESTION, null, null, question);
+        }
+
+        public static SkillChatResult file(String filePath) {
+            return new SkillChatResult(SkillChatResultType.FILE, null, filePath, null);
+        }
+    }
 
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
@@ -211,17 +235,35 @@ public class LoveApp {
     @Resource
     private ToolCallback[] allTools;
 
-    public String doChatWithTools(String message, String chatId){
+    public SkillChatResult callWithSkills(String message, String chatId) {
         ChatResponse chatResponse = chatClient
                 .prompt()
                 .user(message)
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
                 .toolCallbacks(allTools)
+                .toolCallbacks(SkillsTool.builder()
+                        .addSkillsDirectory(resolveSkillsDirectory())
+                        .build())
                 .call()
                 .chatResponse();
-        log.info("chatResponse: {}", chatResponse);
+        log.info("skill chatResponse: {}", chatResponse);
         assert chatResponse != null;
-        return chatResponse.getResult().getOutput().getText();
+        return toSkillChatResult(chatResponse.getResult().getOutput().getText());
+    }
+
+    public Flux<SkillChatResult> streamWithSkills(String message, String chatId) {
+        return Flux.defer(() -> Flux.just(callWithSkills(message, chatId)));
+    }
+
+    public String doChatWithTools(String message, String chatId){
+        SkillChatResult result = callWithSkills(message, chatId);
+        if (result.type() == SkillChatResultType.FILE) {
+            return result.filePath();
+        }
+        if (result.type() == SkillChatResultType.QUESTION) {
+            return result.question();
+        }
+        return result.content();
     }
 
     // mcp 协议注入
@@ -239,6 +281,43 @@ public class LoveApp {
         log.info("chatResponse: {}", chatResponse);
         assert chatResponse != null;
         return chatResponse.getResult().getOutput().getText();
+    }
+
+    private SkillChatResult toSkillChatResult(String text) {
+        if (text == null || text.isBlank()) {
+            return SkillChatResult.text("");
+        }
+        if (text.startsWith("FILE:")) {
+            return SkillChatResult.file(text.substring("FILE:".length()).trim());
+        }
+        if (text.startsWith("QUESTION:")) {
+            return SkillChatResult.question(text.substring("QUESTION:".length()).trim());
+        }
+        if (looksLikeFilePath(text)) {
+            return SkillChatResult.file(text.trim());
+        }
+        if (looksLikeQuestion(text)) {
+            return SkillChatResult.question(text.trim());
+        }
+        return SkillChatResult.text(text);
+    }
+
+    private boolean looksLikeFilePath(String text) {
+        String trimmed = text.trim();
+        return trimmed.endsWith(".pptx") || trimmed.endsWith(".pdf") || trimmed.endsWith(".png")
+                || trimmed.startsWith("/") || trimmed.startsWith("tmp/");
+    }
+
+    private boolean looksLikeQuestion(String text) {
+        return text.contains("请问") || text.endsWith("？") || text.endsWith("?");
+    }
+
+    private String resolveSkillsDirectory() {
+        try {
+            return new ClassPathResource(".claude/skills").getFile().getAbsolutePath();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to resolve skills directory from classpath", e);
+        }
     }
 
 }

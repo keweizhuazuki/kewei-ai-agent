@@ -17,6 +17,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <spring-ai.version>2.0.0-M2</spring-ai.version>
     </properties>
 
     <dependencies>
@@ -32,7 +33,7 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
-            <version>1.1.2</version>
+            <version>${spring-ai.version}</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
