@@ -7,6 +7,9 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
 
+/**
+ * Manus 智能体实现类，负责装配工具集、系统提示词和大模型客户端。
+ */
 @Component
 public class KeweiManus extends ToolCallAgent{
     public KeweiManus(ToolCallback[] allTools, ChatModel ollamaChatModel) {

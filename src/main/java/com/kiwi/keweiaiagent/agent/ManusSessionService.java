@@ -16,10 +16,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Manus 会话服务，负责按任务类型选择工具并驱动会话继续执行。
+ */
 @Service
 @Slf4j
 public class ManusSessionService {
 
+    /**
+     * 任务领域枚举，描述 Manus 会话当前适配的工具集合类别。
+     */
     enum TaskDomain {
         GENERAL,
         RESEARCH,
@@ -28,6 +34,9 @@ public class ManusSessionService {
         EMAIL
     }
 
+    /**
+     * 任务领域与允许工具名称之间的映射关系。
+     */
     private static final Map<TaskDomain, Set<String>> DOMAIN_TOOL_NAMES = new EnumMap<>(TaskDomain.class);
 
     static {
@@ -64,15 +73,27 @@ public class ManusSessionService {
         ));
     }
 
+    /**
+     * 系统中注册的全部工具。
+     */
     @Resource
     private ToolCallback[] allTools;
 
+    /**
+     * 用于创建 Manus 智能体的大模型实例。
+     */
     @Resource
     private ChatModel ollamaChatModel;
 
+    /**
+     * Manus 会话存储组件。
+     */
     @Resource
     private ManusSessionStore manusSessionStore;
 
+    /**
+     * 启动新的 Manus 流式会话。
+     */
     public SseEmitter startChatStream(String chatId, String message) {
         ToolCallback[] selectedTools = selectToolsForPrompt(message);
         KeweiManus manus = new KeweiManus(selectedTools, ollamaChatModel);
@@ -82,6 +103,9 @@ public class ManusSessionService {
         return manus.runStream(message);
     }
 
+    /**
+     * 基于补充答案继续执行 Manus 会话。
+     */
     public SseEmitter continueChatStream(String chatId, Map<String, String> answers) {
         ManusSessionStore.ManusSession session = manusSessionStore.getSession(chatId);
         if (session == null || session.agent() == null) {
@@ -147,6 +171,9 @@ public class ManusSessionService {
         return false;
     }
 
+    /**
+     * 将用户补充答案整理为可继续执行的跟进提示词。
+     */
     private String buildFollowupPrompt(ManusSessionStore.ManusSession session, Map<String, String> answers) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("原始任务：\n").append(session.initialPrompt()).append("\n\n");
