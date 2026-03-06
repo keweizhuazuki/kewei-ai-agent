@@ -46,6 +46,10 @@
             <version>1.19.1</version>
         </dependency>
         <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-client</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>3.0.3</version>
@@ -127,10 +131,6 @@
             <artifactId>jsonschema-module-jackson</artifactId>
             <version>4.38.0</version>
         </dependency>
-
-
-
-
         <!-- ✅ Knife4j：使用已适配 springdoc 2.8.x 的 4.8.0 发布坐标 -->
         <dependency>
             <groupId>io.github.b18150228njupt</groupId>
@@ -148,14 +148,6 @@
             <artifactId>kotlin-reflect</artifactId>
             <version>1.9.25</version>
         </dependency>
-
-
-
-
-
-
-
-
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

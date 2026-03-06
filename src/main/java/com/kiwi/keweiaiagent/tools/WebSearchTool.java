@@ -16,13 +16,18 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.List;
+import java.util.Set;
 
 @Component
 @Slf4j
 public class WebSearchTool {
 
     private static final String SEARCH_API_URL = "https://www.searchapi.io/api/v1/search";
+    private static final Set<String> SUPPORTED_TIME_PERIODS = Set.of(
+            "last_hour", "last_day", "last_week", "last_month", "last_year"
+    );
     @Value("${search-api.api-key:${searchapi.key:}}")
     private String configuredApiKey;
     @Autowired(required = false)
@@ -57,21 +62,29 @@ public class WebSearchTool {
             return "Error: missing SearchAPI key. Set config key searchapi.key (or search-api.api-key), env SEARCHAPI_API_KEY, or -Dsearchapi.api-key.";
         }
 
+        String normalizedGl = normalizeGl(gl);
+        String normalizedHl = normalizeHl(hl);
+        String normalizedLocation = normalizeLocation(location);
+        int normalizedPage = normalizePage(page);
+        String normalizedTimePeriod = normalizeTimePeriod(timePeriod);
+
         HttpRequest request = HttpRequest.get(SEARCH_API_URL)
                 .form("engine", "google")
                 .form("q", q)
                 .form("api_key", apiKey)
-                .form("gl", StrUtil.blankToDefault(gl, "us"))
-                .form("hl", StrUtil.blankToDefault(hl, "en"))
-                .form("page", page == null || page < 1 ? 1 : page)
+                .form("gl", normalizedGl)
+                .form("hl", normalizedHl)
+                .form("page", normalizedPage)
                 .timeout(20_000);
 
-        if (StrUtil.isNotBlank(location)) {
-            request.form("location", location);
+        if (StrUtil.isNotBlank(normalizedLocation)) {
+            request.form("location", normalizedLocation);
         }
-        if (StrUtil.isNotBlank(timePeriod)) {
-            request.form("time_period", timePeriod);
+        if (StrUtil.isNotBlank(normalizedTimePeriod)) {
+            request.form("time_period", normalizedTimePeriod);
         }
+        log.info("searchWebsite normalized args: gl={}, hl={}, location={}, page={}, timePeriod={}",
+                normalizedGl, normalizedHl, normalizedLocation, normalizedPage, normalizedTimePeriod);
 
         try (HttpResponse response = request.execute()) {
             if (response.getStatus() < 200 || response.getStatus() >= 300) {
@@ -100,6 +113,62 @@ public class WebSearchTool {
             apiKey = System.getenv("SEARCHAPI_API_KEY");
         }
         return apiKey;
+    }
+
+    String normalizeHl(String hl) {
+        if (StrUtil.isBlank(hl)) {
+            return "en";
+        }
+        String lower = hl.trim().toLowerCase(Locale.ROOT);
+        if ("zh".equals(lower) || "zh-cn".equals(lower) || "zh_cn".equals(lower)) {
+            return "zh-CN";
+        }
+        if ("en".equals(lower) || "en-us".equals(lower) || "en_us".equals(lower)) {
+            return "en";
+        }
+        return "en";
+    }
+
+    String normalizeGl(String gl) {
+        if (StrUtil.isBlank(gl)) {
+            return "us";
+        }
+        String lower = gl.trim().toLowerCase(Locale.ROOT);
+        if ("cn".equals(lower) || "us".equals(lower)) {
+            return lower;
+        }
+        return "us";
+    }
+
+    String normalizeLocation(String location) {
+        if (StrUtil.isBlank(location)) {
+            return "";
+        }
+        String normalized = location.trim()
+                .replace("，", ",")
+                .replaceAll("\\s*,\\s*", ", ");
+        if (normalized.contains("上海")) {
+            return "Shanghai, China";
+        }
+        if ("中国".equals(normalized) || "中华人民共和国".equals(normalized)) {
+            return "China";
+        }
+        return normalized;
+    }
+
+    int normalizePage(Integer page) {
+        if (page == null || page < 1) {
+            return 1;
+        }
+        return page;
+    }
+
+    String normalizeTimePeriod(String timePeriod) {
+        if (StrUtil.isBlank(timePeriod)) {
+            return "";
+        }
+        String normalized = timePeriod.trim().toLowerCase(Locale.ROOT);
+        return SUPPORTED_TIME_PERIODS.contains(normalized) ? normalized : "";
     }
 
     String toConciseResult(JSONObject root, String query) {

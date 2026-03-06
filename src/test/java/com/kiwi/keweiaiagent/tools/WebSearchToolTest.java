@@ -45,4 +45,14 @@ class WebSearchToolTest {
             System.out.println(result);
             Assertions.assertNotNull(result);
     }
+
+    @Test
+    void shouldNormalizeSearchArgs() {
+        Assertions.assertEquals("zh-CN", tool.normalizeHl("zh"));
+        Assertions.assertEquals("en", tool.normalizeHl("en"));
+        Assertions.assertEquals("cn", tool.normalizeGl("CN"));
+        Assertions.assertEquals("us", tool.normalizeGl("xx"));
+        Assertions.assertEquals("Shanghai, China", tool.normalizeLocation("上海，中国"));
+        Assertions.assertEquals(1, tool.normalizePage(0));
+    }
 }

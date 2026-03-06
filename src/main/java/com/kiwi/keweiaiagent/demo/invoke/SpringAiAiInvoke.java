@@ -9,7 +9,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-@Component
+//@Component
 @Profile("dashscope")
 public class SpringAiAiInvoke implements CommandLineRunner {
 

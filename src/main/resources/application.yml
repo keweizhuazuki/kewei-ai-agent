@@ -14,12 +14,12 @@ spring:
           model: mxbai-embed-large:latest
     mcp:
       client:
-        sse:
-          connections:
-            server1:
-                url: http://localhost:8129
-#        stdio:
-#          servers-configuration: classpath:mcp-servers.json
+#        sse:
+#          connections:
+#            server1:
+#                url: http://localhost:8129
+        stdio:
+          servers-configuration: classpath:mcp-servers.json
         request-timeout: 200s
 
     vectorstore:

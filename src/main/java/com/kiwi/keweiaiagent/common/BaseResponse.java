@@ -1,6 +1,7 @@
 package com.kiwi.keweiaiagent.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kiwi.keweiaiagent.exception.ErrorCode;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseResponse<T> {
@@ -28,6 +29,10 @@ public class BaseResponse<T> {
 
     public static <T> BaseResponse<T> fail(Integer code, String message) {
         return new BaseResponse<>(code, message, null);
+    }
+
+    public static <T> BaseResponse<T> fail(ErrorCode errorCode) {
+        return new BaseResponse<>(errorCode.getCode(), errorCode.getMessage(), null);
     }
 
     public Integer getCode() {

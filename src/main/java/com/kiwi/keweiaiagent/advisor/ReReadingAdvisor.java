@@ -45,7 +45,7 @@ public class ReReadingAdvisor implements BaseAdvisor {
                 .prompt(chatClientRequest.prompt().augmentUserMessage(augmentedUserText))
                 .build();
 
-        // 存放原始用户输入，供后续advisor使用,在Advisor 链中共享状态
+        // 存放原始用户输入，供后续advisor使用,在 Advisor 链中共享状态
         ret.context().put("userText", userText);
         return ret;
 

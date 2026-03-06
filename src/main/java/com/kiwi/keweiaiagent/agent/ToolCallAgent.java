@@ -38,6 +38,7 @@ public class ToolCallAgent extends ReActAgent{
     private final ToolCallingManager toolCallingManager;
 
     private final ChatOptions chatOptions;
+    private String latestAssistantText;
 
     public ToolCallAgent(ToolCallback[] toolCalbacks){
         super();
@@ -78,10 +79,12 @@ public class ToolCallAgent extends ReActAgent{
             if (StrUtil.isBlank(result) && !toolCallList.isEmpty()) {
                 result = summarizeToolPlan(assistantMessage);
             }
+            this.latestAssistantText = StrUtil.blankToDefault(result, "");
             log.info("工具调用结果: {}, 要调用的工具列表: {}", result, toolCallList);
             //如果不需要调用工具，返回 false
             if(toolCallList.isEmpty()) {
                 getMessageList().add(assistantMessage);
+                setState(AgentState.FINISHED);
                 log.info("不需要调用工具，思考结束");
                 return false;
             }
@@ -121,10 +124,27 @@ public class ToolCallAgent extends ReActAgent{
                 .stream()
                 .map(response -> "工具" + response.name() + "返回结果：" + response.responseData())
                 .collect(Collectors.joining("\n"));
-
-
+        if (StrUtil.isNotBlank(latestAssistantText)) {
+            results = results + "\n\nFinal Answer: " + latestAssistantText;
+        }
         log.info(results);
         return results;
+    }
+
+    @Override
+    public String step() {
+        try {
+            boolean shouldAct = think();
+            if (shouldAct) {
+                return act();
+            }
+            if (StrUtil.isNotBlank(latestAssistantText)) {
+                return "Final Answer: " + latestAssistantText;
+            }
+            return "思考结束，不需要行动";
+        } catch (BusinessException e) {
+            return "执行过程中发生错误: " + e.getMessage();
+        }
     }
 
     private String buildSystemPrompt() {
