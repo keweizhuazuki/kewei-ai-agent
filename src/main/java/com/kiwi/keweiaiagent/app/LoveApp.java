@@ -16,15 +16,16 @@ import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvi
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -112,15 +113,30 @@ public class LoveApp {
      * @return
      */
     public String doChatWithImage(String message, String chatId, String imagePath){
+        FileSystemResource imageResource = new FileSystemResource(imagePath);
+        MediaType mediaType = MediaTypeFactory.getMediaType(imageResource)
+                .orElse(MediaType.IMAGE_PNG);
         ChatResponse chatResponse = chatClient
                 .prompt()
-                .user(u -> u.text(message).media(MimeTypeUtils.IMAGE_PNG,new ClassPathResource(imagePath)))
+                .user(u -> u.text(message).media(mediaType, imageResource))
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
                 .call()
                 .chatResponse();
         assert chatResponse != null;
         String content = chatResponse.getResult().getOutput().getText();
         return content;
+    }
+
+    public Flux<String> doChatWithImageStream(String message, String chatId, String imagePath){
+        FileSystemResource imageResource = new FileSystemResource(imagePath);
+        MediaType mediaType = MediaTypeFactory.getMediaType(imageResource)
+                .orElse(MediaType.IMAGE_PNG);
+        return chatClient
+                .prompt()
+                .user(u -> u.text(message).media(mediaType, imageResource))
+                .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .stream()
+                .content();
     }
 
     /**
