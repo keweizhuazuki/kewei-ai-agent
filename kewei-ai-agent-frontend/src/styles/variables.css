@@ -1,0 +1,33 @@
+:root {
+  --bg-main: #fff9f1;
+  --bg-soft: #fff3e5;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-strong: #fff;
+  --text-main: #453127;
+  --text-subtle: #7f6657;
+  --primary: #f08062;
+  --primary-deep: #e56743;
+  --secondary: #f3ba6f;
+  --mint: #8db7a6;
+  --danger: #ce4f52;
+  --border: rgba(225, 190, 159, 0.45);
+  --shadow-soft: 0 10px 30px rgba(228, 154, 108, 0.18);
+  --shadow-hover: 0 18px 44px rgba(228, 154, 108, 0.28);
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 26px;
+
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 22px;
+  --space-5: 30px;
+  --space-6: 44px;
+
+  --font-body: 'Nunito', 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-title: 'Trebuchet MS', 'Gill Sans', 'Noto Sans SC', sans-serif;
+
+  --bp-tablet: 1024px;
+  --bp-mobile: 768px;
+}
