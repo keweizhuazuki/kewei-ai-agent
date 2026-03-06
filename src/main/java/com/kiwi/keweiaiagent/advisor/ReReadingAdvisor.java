@@ -9,6 +9,9 @@ import org.springframework.util.Assert;
 
 import java.util.Map;
 
+/**
+ * 提示词重读增强器，负责在调用前对用户问题进行二次强调。
+ */
 public class ReReadingAdvisor implements BaseAdvisor {
 
 	private static final String DEFAULT_RE2_ADVISE_TEMPLATE = """
