@@ -26,6 +26,8 @@
 - 持续扩展工具能力（邮件发送、时间查询），完善工具注册与测试覆盖
 - 接入 MCP 客户端与独立 MCP 工具服务（图像搜索 / 图像生成），支持跨服务工具编排
 - 引入多步 Agent 执行框架（ReAct + Tool Calling + 终止机制）并开放控制器接口
+- 增加图片上传与图片对话处理链路，支持基于文件路径的同步与流式图像聊天
+- 新增前端工程 `kewei-ai-agent-frontend`，用于承载应用界面与前后端联调
 
 ## 目录结构（当前）
 
@@ -34,7 +36,7 @@
 - `src/main/java/com/kiwi/keweiaiagent`
   - `KeweiAiAgentApplication`：Spring Boot 启动入口
 - `src/main/java/com/kiwi/keweiaiagent/app`
-  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、RAG、Tools、MCP、记忆、Advisor 链）
+  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、图片流式、RAG、Tools、MCP、记忆、Advisor 链）
 - `src/main/java/com/kiwi/keweiaiagent/advisor`
   - `MyLoggerAdvisor`：记录请求与响应日志
   - `ReReadingAdvisor`：对用户输入进行增强，并向 Advisor 链上下文写入原始输入
@@ -51,6 +53,7 @@
   - `BaseResponse`：统一响应体
 - `src/main/java/com/kiwi/keweiaiagent/constant`
   - `FileConstant`：文件工具默认保存目录常量
+  - 包含图片上传目录常量 `IMAGE_UPLOAD_DIR`
 - `src/main/java/com/kiwi/keweiaiagent/config`
   - `AiModelPrimaryConfig`：指定默认 AI 模型/Embedding Bean 优先级（解决多 Provider 并存冲突）
   - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
@@ -60,7 +63,7 @@
   - `GlobalCorsConfig`：全局跨域配置
 - `src/main/java/com/kiwi/keweiaiagent/controller`
   - `HealController`：健康检查接口
-  - `AiController`：统一 AI 能力入口（同步/流式/SSE/Agent/MCP）
+  - `AiController`：统一 AI 能力入口（同步/流式/SSE/图片上传/Agent/MCP）
 - `src/main/java/com/kiwi/keweiaiagent/exception`
   - `BusinessException`：业务异常定义
   - `GlobalExceptionHandler`：全局异常处理器
@@ -119,6 +122,8 @@
 - `kewei-image-generation-mcp-server`
   - 独立 MCP 服务工程：提供 `ImageGenerationTool`（基于 Draw Things 的文生图）
   - 含 `application.yml` / `application-sse.yml` / `application-stdio.yml` 与对应测试
+- `kewei-ai-agent-frontend`
+  - 独立前端工程：用于承载对话界面、图片上传交互、流式输出展示以及前后端联调
 
 ## 进度记录
 
@@ -1365,6 +1370,113 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 - 控制器已统一支持同步/流式/Agent 入口，接口能力更完整
 - Agent 关键分支具备测试覆盖，后续扩展基础更稳固
 
+## 19. 增加图片上传与图片处理链路（控制器参数扩展 + 文件路径图像对话）
+
+### 本阶段目标
+
+- 为对话接口增加“图片模式”参数，支持基于本地图片路径的图像问答
+- 增加图片上传接口，将前端上传文件保存到本地目录
+- 让同步聊天、流式聊天、SSE Emitter 三种模式都兼容图片输入
+
+### 主要新增/涉及文件
+
+- `src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`
+  - 本阶段新增/增强接口：
+    - `GET /ai/love_app/chat/sync`
+      - 新增参数：`option`、`imagePath`
+      - 作用：当 `option=image` 且 `imagePath` 有值时，切换为图片对话模式
+    - `GET /ai/love_app/chat/sse`
+      - 新增参数：`option`、`imagePath`
+      - 作用：支持图片场景下的流式输出
+    - `GET /ai/love_app/chat/sse_emitter`
+      - 新增参数：`option`、`imagePath`
+      - 作用：支持图片场景下的打字机式 SSE 输出
+    - `POST /ai/love_app/image/upload`
+      - 入参：`chatId`、`file`
+      - 作用：接收图片上传，保存到本地并返回文件信息
+  - 本阶段新增内部方法：
+    - `resolveExtension(String originalFilename)`：解析文件后缀，兜底为 `.png`
+    - `shouldUseImageOption(String option, String imagePath)`：判断是否启用图片模式
+    - `sendChunkAsTypewriter(...)`：复用 SSE 打字机输出逻辑
+  - 作用：
+    - 把“图片上传”和“图片对话”连接成一条完整控制器链路
+    - 统一处理文本模式和图片模式的入口切换
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段改动：
+    - `doChatWithImage(String message, String chatId, String imagePath)`
+      - 从类路径图片读取切换为 `FileSystemResource`
+      - 通过 `MediaTypeFactory` 自动识别文件类型
+    - `doChatWithImageStream(String message, String chatId, String imagePath)`
+      - 新增图片流式聊天能力
+  - 作用：
+    - 支持使用上传后的本地文件路径进行图像对话
+    - 让图片输入也能走同步与流式两套聊天链路
+
+- `src/main/java/com/kiwi/keweiaiagent/constant/FileConstant.java`
+  - 本阶段新增常量：
+    - `IMAGE_UPLOAD_DIR`
+  - 作用：
+    - 统一图片上传目录，当前固定为 `${user.dir}/tmp/file`
+
+### 数据流说明
+
+1. 前端先调用 `/ai/love_app/image/upload` 上传图片
+2. 服务端将图片保存到 `IMAGE_UPLOAD_DIR`
+3. 接口返回 `chatId`、`fileName`、`filePath`、`relativePath`
+4. 前端再调用聊天接口，并传入：
+   - `option=image`
+   - `imagePath=<上传返回的 filePath 或可解析路径>`
+5. 控制器根据 `shouldUseImageOption(...)` 切换到图片对话逻辑
+
+### 输入输出行为
+
+- 上传接口返回：
+  - `chatId`
+  - `fileName`
+  - `filePath`
+  - `relativePath`
+- 聊天接口在图片模式下：
+  - 同步接口返回完整文本结果
+  - `sse` / `sse_emitter` 返回流式文本结果
+
+### 本阶段结果
+
+- 图片处理链路从“只支持固定资源文件”升级为“支持真实上传文件”
+- 同步聊天、流式聊天、SSE Emitter 三种输出方式都已兼容图片模式
+- 为后续前端接入“上传图片后直接发起图像问答”提供了完整接口基础
+
+## 20. 新增前端工程 `kewei-ai-agent-frontend`
+
+### 本阶段目标
+
+- 在后端能力逐步完善后，新增独立前端工程承接界面层开发
+- 为聊天、图片上传、流式返回、Agent 调用等能力提供统一前端入口
+- 让前后端联调从“接口验证”进入“完整应用交互”阶段
+
+### 主要新增/涉及内容
+
+- 根目录新增：
+  - `kewei-ai-agent-frontend`
+  - 作用：
+    - 作为独立前端工程存在，与主后端工程并列管理
+    - 承担页面展示、交互流程、接口联调和用户侧体验实现
+
+### 实现定位（当前阶段）
+
+- 当前 README 只在根目录级别记录该前端工程的引入
+- 不展开内部目录、文档和具体实现细节
+- 从职责上看，它主要会服务于：
+  - 文本聊天页面
+  - 图片上传与图片问答页面
+  - 流式输出展示
+  - Agent / MCP 能力的前端交互封装
+
+### 本阶段结果
+
+- 项目结构从“后端能力建设”扩展为“前后端协同开发”
+- 为后续 UI、交互体验和联调流程提供了独立承载工程
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -1385,6 +1497,8 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 - 已扩展工具生态（邮件发送、时间查询）并完成注册方式升级（Bean 注入式）
 - 已接入 MCP 客户端与双图像 MCP 服务（搜索/生成），完成主应用联调与路径化结果返回
 - 已完成 Agent 化拓展（BaseAgent/ReAct/ToolCall/KeweiManus）并开放多种流式控制器接口
+- 已补齐图片上传与图片聊天处理链路，支持基于文件路径的图像对话与流式输出
+- 已新增独立前端工程 `kewei-ai-agent-frontend`，开始具备前后端协同开发基础
 
 ## 后续进度补充方式（约定）
 
