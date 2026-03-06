@@ -19,33 +19,62 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * 抽象类，定义了智能体的基本属性和方法
+ * 智能体抽象基类，封装状态管理、执行循环和流式事件分发等通用能力。
  */
-
 @Data
 @Slf4j
 public abstract class BaseAgent {
 
+    /**
+     * 智能体名称，用于日志输出和执行结果标识。
+     */
     private String name;
 
+    /**
+     * 系统提示词，用于约束智能体的全局行为。
+     */
     private String systemPrompt;
 
+    /**
+     * 下一步提示词，用于驱动每轮执行后的继续推理。
+     */
     private String nextStepPrompt;
 
+    /**
+     * 当前智能体状态。
+     */
     private AgentState state = AgentState.IDLE;
 
+    /**
+     * 当前执行到的步骤序号。
+     */
     private int currentStep = 0;
 
+    /**
+     * 允许执行的最大步骤数。
+     */
     private int maxSteps = 10;
 
+    /**
+     * 关联的会话标识，用于流式场景下恢复上下文。
+     */
     private String sessionId;
 
+    /**
+     * 会话存储组件，用于同步问题与待办快照。
+     */
     private ManusSessionStore manusSessionStore;
 
     // llm 大模型
+    /**
+     * 底层大模型客户端。
+     */
     private ChatClient chatClient;
 
     // Memory 记忆模块
+    /**
+     * 当前会话内维护的消息历史。
+     */
     private List<Message> messageList = new ArrayList<>();
     /**
      * 执行智能体的主要运行逻辑。
@@ -91,6 +120,9 @@ public abstract class BaseAgent {
         return String.join("\n", results);
     }
 
+    /**
+     * 以 SSE 方式启动智能体执行，并持续向前端推送过程事件。
+     */
     public SseEmitter runStream(String userPrompt){
         validatePromptAndState(userPrompt);
         SseEmitter sseEmitter = new SseEmitter(300000L);
@@ -100,6 +132,9 @@ public abstract class BaseAgent {
         return executeStreamLoop(sseEmitter, false);
     }
 
+    /**
+     * 在补充完用户输入后继续流式执行未完成的会话。
+     */
     public SseEmitter resumeStream() {
         validateResumeState();
         SseEmitter sseEmitter = new SseEmitter(300000L);
@@ -107,6 +142,9 @@ public abstract class BaseAgent {
         return executeStreamLoop(sseEmitter, true);
     }
 
+    /**
+     * 执行流式循环并在过程中分发问题、待办和错误事件。
+     */
     private SseEmitter executeStreamLoop(SseEmitter sseEmitter, boolean resumePendingStep) {
         CompletableFuture.runAsync(() -> {
             boolean activateSession = manusSessionStore != null && StringUtils.hasText(sessionId);
@@ -184,6 +222,9 @@ public abstract class BaseAgent {
         return sseEmitter;
     }
 
+    /**
+     * 校验输入提示词和当前智能体状态是否合法。
+     */
     private void validatePromptAndState(String userPrompt) {
         if(this.state != AgentState.IDLE){
             throw new BusinessException(ErrorCode.AGENT_BUSY);
@@ -193,6 +234,9 @@ public abstract class BaseAgent {
         }
     }
 
+    /**
+     * 校验当前智能体是否允许继续执行。
+     */
     private void validateResumeState() {
         if (this.state != AgentState.WAITING_FOR_USER_INPUT) {
             throw new BusinessException(ErrorCode.INVALID_PARAM, "当前会话不处于待回答状态");
@@ -211,6 +255,9 @@ public abstract class BaseAgent {
         }
     }
 
+    /**
+     * 向前端推送待回答问题事件。
+     */
     private void sendQuestionEvent(SseEmitter sseEmitter, PendingUserQuestionException exception) {
         try {
             Object payload = exception.getQuestions();
@@ -223,6 +270,9 @@ public abstract class BaseAgent {
         }
     }
 
+    /**
+     * 向前端推送待办快照事件。
+     */
     private void sendTodoEvent(SseEmitter sseEmitter, TodoSnapshot snapshot) {
         try {
             TodoEventPayload payload = new TodoEventPayload(snapshot);
@@ -245,12 +295,21 @@ public abstract class BaseAgent {
         return new TodoEventPayload(snapshot);
     }
 
+    /**
+     * 执行单步逻辑，交由子类给出具体实现。
+     */
     public abstract String step();
 
+    /**
+     * 恢复未完成步骤，默认复用单步执行逻辑。
+     */
     protected String resumeStep() {
         return step();
     }
 
+    /**
+     * 执行结束后的清理钩子，供子类按需扩展。
+     */
     protected void cleanup(){
         // 清理资源，重置状态等
         if ((state == AgentState.FINISHED || state == AgentState.ERROR)
@@ -260,8 +319,14 @@ public abstract class BaseAgent {
         }
     }
 
+    /**
+     * 待回答问题事件载荷，封装需要推送给前端的问题内容。
+     */
     public record QuestionEventPayload(Object questions) {}
 
+    /**
+     * 待办快照事件载荷，封装当前任务清单的推送数据。
+     */
     public record TodoEventPayload(TodoSnapshot todo) {}
 
 }
