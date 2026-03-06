@@ -28,6 +28,7 @@
 - 引入多步 Agent 执行框架（ReAct + Tool Calling + 终止机制）并开放控制器接口
 - 增加图片上传与图片对话处理链路，支持基于文件路径的同步与流式图像聊天
 - 新增前端工程 `kewei-ai-agent-frontend`，用于承载应用界面与前后端联调
+- 升级到 Spring AI `2.0.0-M2`，补齐 Skills 模式、AskUserQuestion 两段式交互、PPT 生成能力与 Manus 分域执行链路
 
 ## 目录结构（当前）
 
@@ -58,6 +59,7 @@
   - `AiModelPrimaryConfig`：指定默认 AI 模型/Embedding Bean 优先级（解决多 Provider 并存冲突）
   - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
   - `ChatMemoryMySqlDataSourceConfig`：ChatMemory 专用 MySQL 数据源与 MyBatis 配置
+  - `JacksonCompatibilityConfig`：补充 `ObjectMapper` 配置，兼容新版 Jackson / Spring AI 的序列化与 SSE JSON 场景
   - `PgVectorPrimaryDataSourceConfig`：PgVector 使用的 PostgreSQL 主数据源与 `JdbcTemplate` 配置
   - `GlobalResponseBodyAdvice`：统一响应包装
   - `GlobalCorsConfig`：全局跨域配置
@@ -86,6 +88,8 @@
 - `src/main/java/com/kiwi/keweiaiagent/tools`
   - `ToolRegistration`：统一注册工具回调
   - `TerminateTool`：Agent 终止工具（用于多步任务结束信号）
+  - `AskQuestionTool`：将控制台提问改造为 Web 可恢复的用户追问工具
+  - `PptWriterTool`：根据结构化幻灯片描述在本地生成 `.pptx` 文件
   - `EmailTool`：邮件发送工具（SMTP）
   - `TimeTool`：时间查询工具（支持时区）
   - `FileOperationTool`：文件读取/写入工具
@@ -93,6 +97,9 @@
   - `WebScrapingTool`：网页抓取与摘要工具
   - `ResourceDownloadTool`：资源下载工具
   - `PdfConvertTool`：批量 PDF 转 JPG 工具
+- `src/main/resources/.claude/skills`
+  - `ppt-writer/SKILL.md`：PPT 制作 skill 说明，约束澄清问题、内容规划、文件输出规则
+  - `ppt-writer/assets/default-theme-notes.md`：PPT 默认主题与内容组织说明
 - `src/main/resources`
   - `application.yml`：应用、端口、Profile、AI 模型、pgvector 预配置与接口文档配置
   - `application-local.yml`：本地环境数据源/Redis/ChatMemory 等配置（含动态切换参数）
@@ -112,8 +119,11 @@
   - `ReActAgent`：ReAct 抽象层（think + act）
   - `ToolCallAgent`：工具调用型 Agent 实现
   - `KeweiManus`：应用级多工具 Agent
+  - `ManusSessionStore`：保存 Manus 会话、中间问题和用户补充答案
+  - `ManusSessionService`：负责 Manus 启动、续跑、任务分域与工具子集选择
+  - `PendingUserQuestionException`：用户补充信息中断信号，用于触发 `question` SSE 事件
 - `src/main/java/com/kiwi/keweiaiagent/agent/model`
-  - `AgentState`：Agent 状态枚举（IDLE/RUNNING/FINISHED/ERROR）
+  - `AgentState`：Agent 状态枚举（IDLE/RUNNING/WAITING_FOR_USER_INPUT/FINISHED/ERROR）
 - `src/test/resources`
   - `application-test.yml`：测试环境专用配置（简化自动装配，避免非必要外部依赖）
 - `kewei-image-search-mcp-server`
@@ -124,6 +134,7 @@
   - 含 `application.yml` / `application-sse.yml` / `application-stdio.yml` 与对应测试
 - `kewei-ai-agent-frontend`
   - 独立前端工程：用于承载对话界面、图片上传交互、流式输出展示以及前后端联调
+  - 当前已承接 Manus 的 `question` 事件消费、补充信息表单提交与流式续跑交互
 
 ## 进度记录
 
@@ -1477,6 +1488,357 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 - 项目结构从“后端能力建设”扩展为“前后端协同开发”
 - 为后续 UI、交互体验和联调流程提供了独立承载工程
 
+## 21. 升级 Spring AI 2.0 + 引入 Skill 模式 + AskUserQuestion 两段式交互 + Manus 分域执行
+
+### 本阶段目标
+
+- 将主工程升级到较新的 Spring AI 版本，兼容新的工具调用方式与 Skill 能力
+- 为 Agent 增加 Skill 模式，先落地一个可直接产出文件的 PPT 生成能力
+- 把原本依赖控制台 `stdin` 的提问流程改造成适用于 Web 的“两段式提问/续跑”
+- 修复 Manus 在 SSE 场景下“服务端看得到提问、前端收不到、线程卡住”的交互时机问题
+- 将 Manus 从“大而全工具集一次性硬塞给模型”调整为“先分域，再给小工具集执行”，降低大模型对 JSON Schema / Tool Calling 的不稳定响应
+
+### 主要新增/修改文件
+
+- `pom.xml`
+  - 作用：升级 Spring AI 依赖体系
+  - 关键调整：
+    - `spring-ai.version` 升级到 `2.0.0-M2`
+    - 保持 `spring-ai-agent-utils`、`spring-ai-starter-mcp-client`、`spring-ai-rag`、`spring-ai-starter-model-ollama` 等依赖与新版能力对齐
+  - 本阶段意义：
+    - 为 Skill、Tool Callback、新版 Agent 工具链和后续扩展打基础
+
+- `src/main/resources/application.yml`
+  - 作用：同步新版 Spring AI 运行配置
+  - 本阶段重点：
+    - 保留 Ollama、MCP、PgVector 等主能力配置
+    - 继续通过自动装配排除项控制 DashScope 与其他模型能力的装配边界，避免升级后额外冲突
+
+- `src/main/java/com/kiwi/keweiaiagent/config/JacksonCompatibilityConfig.java`
+  - 类：`JacksonCompatibilityConfig`
+  - 方法：
+    - `objectMapper()`：注册带有 `findAndRegisterModules()` 的 `ObjectMapper`
+  - 作用：
+    - 给新版 Spring AI、SSE 事件序列化以及前后端 JSON 交互提供更稳定的 Jackson 兼容配置
+    - 避免在 `question` 事件、技能结果对象等结构化输出场景下出现序列化兼容问题
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 类：`LoveApp`
+  - 新增/强化的方法：
+    - `callWithSkills(String message, String chatId)`：通过 `toolCallbacks(allTools)` + `SkillsTool` 进入 skill 模式，让模型可以结合技能说明文件和工具完成任务
+    - `streamWithSkills(String message, String chatId)`：对 skill 模式提供流式封装
+    - `doChatWithTools(String message, String chatId)`：基于 `SkillChatResult` 统一处理文本、问题、文件路径三种返回形态
+    - `toSkillChatResult(String text)`：把模型输出规范化为 `TEXT / QUESTION / FILE` 三种业务结果
+    - `resolveSkillsDirectory()`：定位 classpath 下的 `.claude/skills` 目录，供 `SkillsTool` 加载
+  - 新增的数据结构：
+    - `SkillChatResultType`：定义 Skill 结果类型
+    - `SkillChatResult`：统一承载普通文本、追问、文件产物路径
+  - 作用：
+    - 让后端在一个统一入口中同时支持“普通回答”“让用户补充信息”“生成本地文件”三种 Agent 输出
+
+- `src/main/resources/.claude/skills/ppt-writer/SKILL.md`
+  - 作用：定义 `ppt-writer` 技能的行为规范
+  - 主要约束：
+    - 识别“做 PPT / 幻灯片 / 演示稿”等需求时启用该 skill
+    - 缺少主题、受众、语气、页数、输出路径时，通过 `AskUserQuestionTool` 一次性追问
+    - 获取到足够信息后，再调用 `PptWriterTool`
+    - 输出最终文件路径，并补充每页概览说明
+
+- `src/main/resources/.claude/skills/ppt-writer/assets/default-theme-notes.md`
+  - 作用：给 PPT 生成提供默认版式、内容密度和备注页风格参考
+  - 价值：
+    - 降低模型在没有明确视觉规范时的发挥波动
+    - 让生成出来的 PPT 更像“可直接演示的成品”，而不是简单文本堆砌
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/PptWriterTool.java`
+  - 类：`PptWriterTool`
+  - 核心数据结构：
+    - `SlideSpec`：单页幻灯片的数据描述（标题、要点、备注）
+    - `PptSpec`：整份 PPT 的输入描述（总标题、页面 Markdown、输出路径）
+  - 方法：
+    - `create_pptx(PptSpec spec)`：真正生成 `.pptx` 文件，并返回生成结果、路径和页数
+    - `validateSpec(PptSpec spec)`：校验标题、内容、输出路径是否合法
+    - `parseSlides(String slidesMarkdown)`：把统一约定的 Markdown 文本拆成多页结构化内容
+    - `nonBlankOrDefault(...)`：处理默认标题等兜底逻辑
+  - 作用：
+    - 把“模型生成的页面规划文本”稳定转换成实际可下载的 PowerPoint 文件
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/PptWriterToolTest.java`
+  - 类：`PptWriterToolTest`
+  - 方法：
+    - `createPptxFromFlatSlidesMarkdown()`：验证 Markdown 页面描述可以成功生成 `.pptx` 文件，且文件存在、页数正确
+  - 作用：
+    - 证明 PPT 工具不是停留在 Prompt 设计层，而是已经具备真实文件落盘能力
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/AskQuestionTool.java`
+  - 类：`AskQuestionTool`
+  - 方法：
+    - `askUserQuestionTool()`：注册 `AskUserQuestionTool` Bean
+    - `handleQuestions(List<Question> questions)`：处理模型发出的追问请求
+  - 作用变化：
+    - 不再通过控制台 `System.out.println` + `Scanner(System.in)` 阻塞等待用户输入
+    - 改为优先从 `ManusSessionStore` 中消费前端已提交的答案
+    - 若当前没有答案，则保存待回答问题，并抛出 `PendingUserQuestionException`
+  - 本质变化：
+    - 工具不再自己负责“提问 + 等待 + 继续”整条链路，而是只负责发出“现在需要用户补充信息”的信号
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/PendingUserQuestionException.java`
+  - 类：`PendingUserQuestionException`
+  - 方法：
+    - `getQuestions()`：返回当前待回答问题列表
+  - 作用：
+    - 作为 AskUserQuestion 的中断信号，向外层 Agent / Controller 明确告知“当前不是报错，也不是完成，而是需要暂停等待用户回答”
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/model/AgentState.java`
+  - 枚举：`AgentState`
+  - 新增状态：
+    - `WAITING_FOR_USER_INPUT`
+  - 作用：
+    - 让 Agent 的状态机从“空闲 / 运行 / 完成 / 错误”扩展为“可显式暂停等待用户补充信息”
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java`
+  - 类：`ManusSessionStore`
+  - 记录结构：
+    - `PendingOption`：前端可展示的单个选项
+    - `PendingQuestion`：适合前端渲染的待回答问题结构
+    - `ManusSession`：会话快照，包含 `chatId`、原始任务、当前 agent、待回答问题和待提交答案
+  - 方法：
+    - `putSession(...)`：创建并保存会话
+    - `getSession(String chatId)`：获取当前会话
+    - `removeSession(String chatId)`：移除会话
+    - `savePendingQuestions(...)`：保存模型发出的追问，并转换成前端可用结构
+    - `submitAnswers(...)`：保存前端提交的答案
+    - `consumeAnswers(String chatId)`：消费答案，并把前端问题 id 映射回模型原始问题文本
+    - `clearPendingQuestions(String chatId)`：清理当前待答问题
+    - `activateSession(String chatId)` / `clearActiveSession()` / `currentSessionId()`：维护当前线程对应的活动会话
+    - `getPendingQuestions(String chatId)`：给 SSE `question` 事件提供可直接输出的前端结构
+  - 作用：
+    - 解决“提问”和“用户补答”不在同一个 HTTP 请求里的状态持久问题
+    - 当前实现是进程内内存版，适合本地联调和单机运行
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/BaseAgent.java`
+  - 类：`BaseAgent`
+  - 新增/强化的方法与能力：
+    - `runStream(String userPrompt)`：启动流式执行
+    - `resumeStream()`：支持从等待状态继续执行
+    - `executeStreamLoop(...)`：统一封装首次执行和继续执行的循环逻辑
+    - `validateResumeState()`：校验当前是否允许继续
+    - `sendQuestionEvent(...)`：在捕获 `PendingUserQuestionException` 后发送 `event: question`
+    - `sendErrorEvent(...)`：统一发送错误事件
+    - `cleanup()`：在完成/失败后清理资源，并在必要时清理 Manus 会话
+  - 本阶段变化重点：
+    - 新增 `sessionId`、`manusSessionStore`，把 Agent 执行与某个 chatId 绑定
+    - `runStream()` 不再只是“执行 step 后发消息”，而是显式捕获等待用户输入的中断状态
+    - 一旦进入等待状态，就通过 SSE 发送 `question` 事件，而不是继续卡在 `step()` 内部
+  - 作用：
+    - 修复了“服务端控制台能看到追问，但前端一直收不到 question 事件”的发送时机问题
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/BaseAgentTest.java`
+  - 类：`BaseAgentTest`
+  - 方法：
+    - `runStreamShouldWaitForUserInputWhenQuestionIsRaised()`：验证 Agent 在收到 `PendingUserQuestionException` 时会进入 `WAITING_FOR_USER_INPUT`
+  - 作用：
+    - 覆盖本阶段最关键的状态流转
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ToolCallAgent.java`
+  - 类：`ToolCallAgent`
+  - 方法：
+    - `think()`：驱动模型思考，获取 Tool Call 计划
+    - `act()`：执行工具调用并处理返回
+    - `step()`：组合执行单步思考与行动
+    - `resumeStep()`：保留“基于已有 Tool Call 恢复执行”的能力
+    - `summarizeToolPlan(...)`：把纯 Tool Call 计划整理为更易读的文字摘要
+    - `hasPendingUserInput(...)`：检测工具返回是否意味着“正在等待用户补充信息”
+  - 本阶段说明：
+    - 代码里保留了 `resumeStep()` 与基于 `toolCallChatResponse` 的续跑思路
+    - 但从最终服务编排看，Manus 已不再依赖“复用旧 pending tool call 原地继续”作为主方案，而是改为“重新组装 prompt 后启动一个新的 agent”来续跑
+  - 原因：
+    - 旧方案在复杂 Tool Calling 场景下状态不稳定，容易受历史上下文和 pending 响应影响
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/ToolCallAgentTest.java`
+  - 类：`ToolCallAgentTest`
+  - 方法：
+    - `think_shouldNotAppendNextStepPromptAsUserMessageOnEveryStep()`：验证不会在每一步重复污染用户消息
+    - `summarizeToolPlan_shouldIncludeToolNamesAndResultHint()`：验证工具计划摘要可读性
+    - `shouldDetectPendingUserInputFromAskUserQuestionToolResponse()`：验证能识别待用户输入状态
+  - 作用：
+    - 为 Tool Calling 的稳定性改造补充回归保障
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`
+  - 类：`ManusSessionService`
+  - 枚举：
+    - `TaskDomain`：把任务分成 `GENERAL / PPT / PDF / EMAIL`
+  - 方法：
+    - `startChatStream(String chatId, String message)`：根据用户任务选择工具域，创建新的 `KeweiManus` 并启动执行
+    - `continueChatStream(String chatId, Map<String, String> answers)`：接收用户补充信息，重新组装 follow-up prompt，再创建新的 `KeweiManus` 继续执行
+    - `selectToolsForPrompt(String prompt)`：按任务域筛选一小组工具
+    - `routeTaskDomain(String prompt)`：从 prompt 判断任务属于 PPT、PDF、邮件还是通用任务
+    - `buildFollowupPrompt(...)`：把“原始任务 + 用户补充答案”组装成新的继续执行提示词
+  - 本阶段核心作用：
+    - 从“让模型背着全量工具和 skill 直接开跑”改成“先识别任务域，再只给相关工具”
+    - 当前续跑策略不是恢复旧 agent 内部状态，而是重组 prompt 后启动新的 agent，规避旧状态不稳定问题
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/ManusSessionServiceTest.java`
+  - 类：`ManusSessionServiceTest`
+  - 方法：
+    - `shouldSelectPptToolSubsetForPptPrompt()`：验证 PPT 任务只拿到 PPT 相关工具集
+    - `shouldSelectEmailToolSubsetForEmailPrompt()`：验证邮件任务工具子集筛选
+    - `shouldSelectPdfToolSubsetForPdfPrompt()`：验证 PDF 任务工具子集筛选
+    - `shouldKeepAllToolsForGeneralPrompt()`：验证普通任务仍可使用全量工具
+    - `shouldRoutePromptToExpectedDomain()`：验证任务域路由逻辑
+  - 作用：
+    - 给“两阶段分域执行”增加明确的可回归测试
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 类：`ToolRegistration`
+  - 方法：
+    - `allTools(...)`：统一收集并注册当前可用的 `ToolCallback[]`
+  - 本阶段新增注册：
+    - `AskUserQuestionTool`
+    - `PptWriterTool`
+  - 作用：
+    - 让 PPT skill 和 AskUserQuestion 模式成为统一工具体系的一部分，而不是单独拼接的临时能力
+
+- `src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`
+  - 类：`AiController`
+  - 本阶段重点方法：
+    - `doChatWithLoveAppSync(...)`：增加 `option=skills` 分支，走 `LoveApp.callWithSkills(...)`
+    - `doChatWithLoveAppSSE(...)`：增加 skill 模式流式返回
+    - `doChatWithLoveAppSseEmitter(...)`：兼容 skill 模式下的 SSE Emitter 输出
+    - `doChatWithManus(...)`：启动 Manus 的第一段任务执行
+    - `continueChatWithManus(...)`：接收前端补充答案，继续执行 Manus
+    - `ManusContinueRequest`：封装继续执行接口的请求体（`chatId + answers`）
+  - 作用：
+    - 后端正式提供“第一次发起任务”和“补充答案后继续执行”两个独立入口
+
+- `src/test/java/com/kiwi/keweiaiagent/controller/AiControllerTest.java`
+  - 类：`AiControllerTest`
+  - 方法：
+    - `shouldUseSkillSyncResponseWhenOptionIsSkills()`：验证同步 skill 返回 `FILE`
+    - `shouldUseSkillFluxResponseWhenOptionIsSkills()`：验证流式 skill 返回 `QUESTION`
+    - `shouldUseSkillSseEmitterWhenOptionIsSkills()`：验证 skill 模式下 `SseEmitter` 输出
+    - `shouldUseManusSessionServiceForStartChat()`：验证 `/ai/manus/chat` 可以输出 `question` 事件
+    - `shouldUseManusSessionServiceForContinueChat()`：验证 `/ai/manus/chat/continue` 可以继续返回结果
+  - 作用：
+    - 证明 Controller 层已经具备完整的两段式问答协议
+
+- `kewei-ai-agent-frontend/src/api/modules/ai.js`
+  - 方法：
+    - `continueManusChat(payload)`：调用 `/ai/manus/chat/continue`
+  - 作用：
+    - 把 Manus 续跑能力显式接到前端 API 层
+
+- `kewei-ai-agent-frontend/src/api/sse.js`
+  - 方法：
+    - `openSSE(...)`：支持命名事件 `message / question / done`
+    - `openFetchSSE(...)`：支持用 `fetch + POST` 方式消费 `/ai/manus/chat/continue` 这类需要请求体的 SSE 接口
+  - 作用：
+    - 解决 EventSource 只擅长 GET 的限制，让前端也能以流式方式续跑 Manus
+
+- `kewei-ai-agent-frontend/src/views/ChatView.vue`
+  - 主要交互点：
+    - `send()`：发起第一次对话或 Agent 任务
+    - `sendViaSSE(...)`：统一处理 `message / question / done` 事件
+    - `handlePendingQuestion(payload)`：接收并展示待回答问题
+    - `submitPendingAnswers()`：收集用户补充信息，调用 `/ai/manus/chat/continue`
+    - `clearPendingQuestions()` / `resetPendingQuestions()`：清理或重启当前问答流程
+  - 作用：
+    - 前端不再把 `question` 当成普通聊天文本，而是展示为表单面板并支持用户填写后续跑
+
+- `kewei-ai-agent-frontend/src/components/ChatMessage.vue`
+  - 作用：
+    - 优化消息展示，支持图片附件和 Markdown 渲染
+    - 为 Agent 的阶段化输出、工具结果和最终回答提供更好的阅读体验
+
+- `kewei-ai-agent-frontend/src/views/ConsoleView.vue`
+  - 作用：
+    - 补充接口调试与会话管理视角，方便联调 SSE 和 Manus 流程
+
+### 本阶段的关键设计调整
+
+- 从“命令行阻塞式提问”改为“Web 两段式提问/续跑”
+  - 原来 `AskUserQuestionTool` 在控制台打印问题并阻塞等 `stdin`
+  - 现在改为：
+    - 第一次请求只负责把问题通过 SSE `question` 事件发给前端
+    - 第二次请求由前端提交答案到 `/ai/manus/chat/continue`
+    - 后端再基于补充信息继续执行任务
+
+- 从“同一个 Agent 内部强行恢复旧状态”调整为“重新组装 Prompt 后新建 Agent”
+  - 代码里保留了 `resumeStream()` / `resumeStep()` 的恢复能力
+  - 但最终 `ManusSessionService` 选择的主链路是：
+    - 保存原始任务
+    - 收集用户补充答案
+    - 组装 follow-up prompt
+    - 重新创建 `KeweiManus`
+    - 用新 Agent 继续执行
+  - 这样可以绕开旧 pending tool-call 和内部状态在复杂场景下的不稳定行为
+
+- 从“全工具集硬塞给模型”改为“任务分域 + 小工具集执行”
+  - 先判断任务更像 PPT、PDF、Email 还是普通任务
+  - 再只把该领域必要的工具子集交给模型
+  - 这样可以显著降低模型在大量 tools/skills 下对 JSON Schema、Tool Calling 响应不稳定的问题
+
+### 踩坑记录
+
+#### 1. 服务端控制台能看到提问，但前端收不到 `question` 事件
+
+- 问题表现：
+  - 后端已经触发了提问逻辑
+  - IDEA 控制台能看到问题
+  - 前端却收不到 `question` 事件
+  - 整个 Agent 看起来像“卡死”
+- 原因：
+  - 旧的提问方式依赖控制台 `stdin`
+  - 同时 `SseEmitter` 原本要等 `step()` 整体执行完才会发送消息
+  - 但 AskUserQuestion 恰好发生在 `step()` 内部，所以还没来得及把问题发出去就已经阻塞
+- 处理方式：
+  - 新增 `WAITING_FOR_USER_INPUT`
+  - 用 `PendingUserQuestionException` 打断执行
+  - 在 `BaseAgent` 中捕获异常后立刻发送 `event: question`
+  - 前端改为监听命名 SSE 事件，而不是只收普通 `message`
+
+#### 2. 整个 Agent 卡在等待 `stdin`
+
+- 问题表现：
+  - 服务端线程被阻塞
+  - HTTP / SSE 请求长时间不结束
+  - 前端既拿不到问题，也无法继续执行
+- 原因：
+  - AskUserQuestion 的实现本质上还是面向命令行，不适合 Web 请求链路
+- 处理方式：
+  - 去掉控制台阻塞式输入依赖
+  - 改成“第一次请求发问题，第二次请求提交答案”的 Web 两段式协议
+  - 用 `ManusSessionStore` 暂存问题与答案
+
+#### 3. 同一个 Agent 的 resume 状态不稳定
+
+- 问题表现：
+  - 理论上可以在原 Agent 上直接恢复上一次未完成的 Tool Call
+  - 但真实测试中，旧 `resume` 链路容易受 pending tool-call、历史状态和上下文波动影响
+- 处理方式：
+  - 不再把“恢复旧 agent 内部状态”作为主方案
+  - 改成把原始任务和补充答案重新组装为 follow-up prompt
+  - 然后新建一个 `KeweiManus` 继续执行
+
+#### 4. Manus 携带大量 tools / skills 时，大模型对 JSON Schema 响应不稳定
+
+- 问题表现：
+  - 模型在全量工具环境下容易选错工具、输出结构不稳，甚至导致整体执行链路波动
+- 处理方式：
+  - 把 Agent 拆成两阶段思路：
+    - 阶段 A：做规划、补参、任务分域
+    - 阶段 B：只在选定的小工具集里继续执行
+  - 当前落地在 `ManusSessionService` 中表现为“按任务域筛工具子集”
+
+### 本阶段结果
+
+- 主工程已升级到 Spring AI `2.0.0-M2` 体系
+- 已引入基于 Skills 的 Agent 模式，并落地第一个可生成实际文件的 PPT skill
+- AskUserQuestion 已从控制台阻塞模式改造成适合 Web 的两段式交互协议
+- Manus 已补齐 `question` 事件发送链路，前端可以真正接收、展示并提交补充问题
+- Manus 的续跑策略已从“恢复旧状态”转向“重组 prompt 后启动新 agent”，整体更稳定
+- Manus 已具备按任务域筛选工具子集的能力，为后续继续扩展 PDF、Email 等领域 agent 做好了结构准备
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -1499,6 +1861,9 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 - 已完成 Agent 化拓展（BaseAgent/ReAct/ToolCall/KeweiManus）并开放多种流式控制器接口
 - 已补齐图片上传与图片聊天处理链路，支持基于文件路径的图像对话与流式输出
 - 已新增独立前端工程 `kewei-ai-agent-frontend`，开始具备前后端协同开发基础
+- 已升级到 Spring AI `2.0.0-M2`，接入 Skills 模式与本地 PPT 文件生成能力
+- 已把 AskUserQuestion 改造成 Web 两段式提问/续跑链路，前端可以接收并提交 `question` 事件
+- 已对 Manus 做任务分域与工具子集筛选，降低大模型在全量 tools/skills 下的响应不稳定问题
 
 ## 后续进度补充方式（约定）
 
