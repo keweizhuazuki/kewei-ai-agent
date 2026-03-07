@@ -62,6 +62,23 @@
       </div>
 
       <div class="chat-input-wrap">
+        <div v-if="pinnedTodo" class="todo-pin">
+          <div class="todo-pin__header">
+            <div>
+              <strong>当前任务</strong>
+              <p>{{ pinnedTodoCompleted }}/{{ pinnedTodo.items.length }} 已完成</p>
+            </div>
+            <span class="todo-pin__hint">任务执行中，完成后会归档到聊天历史</span>
+          </div>
+          <div class="todo-pin__list">
+            <div v-for="item in pinnedTodo.items" :key="item.id" class="todo-pin__item" :class="`is-${item.status}`">
+              <span class="todo-pin__icon">{{ item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '…' : '○' }}</span>
+              <span class="todo-pin__content">{{ item.content }}</span>
+              <span class="todo-pin__status">{{ formatTodoStatus(item.status) }}</span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="pendingQuestions.length" class="question-panel">
           <div class="question-panel__header">
             <strong>需要补充信息</strong>
@@ -160,6 +177,7 @@ const fileInput = ref(null)
 const pendingQuestions = ref([])
 const pendingAnswers = ref({})
 const pendingQuestionMessageId = ref('')
+const pinnedTodo = ref(null)
 let currentSSE = null
 
 const modeOptions = computed(() => {
@@ -211,11 +229,13 @@ watch(
 
 function switchChat() {
   store.switchChatId(selectedChatId.value)
+  pinnedTodo.value = null
 }
 
 function newChat() {
   const id = store.createNewChatId()
   selectedChatId.value = id
+  pinnedTodo.value = null
 }
 
 function normalizeAssistantText(raw) {
@@ -244,10 +264,32 @@ function patchMessage(id, patch) {
   }
 }
 
+function cloneTodoSnapshot(snapshot) {
+  if (!snapshot) return null
+  return {
+    items: Array.isArray(snapshot.items) ? snapshot.items.map((item) => ({ ...item })) : [],
+  }
+}
+
+function formatTodoStatus(status) {
+  if (status === 'completed') return '已完成'
+  if (status === 'in_progress') return '进行中'
+  return '待处理'
+}
+
+function archivePinnedTodo() {
+  if (!pinnedTodo.value?.items?.length) return
+  addMessage('assistant', '', 'done', {
+    todoSnapshot: cloneTodoSnapshot(pinnedTodo.value),
+  })
+  pinnedTodo.value = null
+}
+
 const canSubmitPendingAnswers = computed(() => pendingQuestions.value.every((question) => {
   const answer = pendingAnswers.value[question.id]
   return Array.isArray(answer) ? answer.length > 0 : Boolean(String(answer || '').trim())
 }))
+const pinnedTodoCompleted = computed(() => pinnedTodo.value?.items?.filter((item) => item.status === 'completed').length || 0)
 
 async function send() {
   if (sending.value || (!input.value.trim() && !pendingAttachment.value)) return
@@ -301,6 +343,7 @@ async function send() {
       timeoutMs: store.activeApp === 'manus' ? 240000 : 45000,
       typewriter: store.activeApp === 'manus',
       onQuestion: handlePendingQuestion,
+      onTodo: handleTodoUpdate,
     })
 
     store.addLog({ endpoint, status: 'success', elapsed: Date.now() - start })
@@ -320,7 +363,7 @@ async function send() {
   }
 }
 
-function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 45000, typewriter = false, onQuestion, opener }) {
+function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 45000, typewriter = false, onQuestion, onTodo, opener }) {
   return new Promise((resolve, reject) => {
     let finalText = ''
     let settled = false
@@ -410,6 +453,16 @@ function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 
         }
         onQuestion?.(parsed || raw)
       },
+      onTodo: (raw) => {
+        refreshIdleTimeout()
+        let parsed = null
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          parsed = null
+        }
+        onTodo?.(parsed || raw)
+      },
       onDone: () => {
         if (settled) return
         settled = true
@@ -425,6 +478,7 @@ function sendViaSSE({ messageId, endpoint, params, withNamedEvents, timeoutMs = 
           return
         }
         patchMessage(messageId, { content: finalText || '(empty)', status: 'done' })
+        archivePinnedTodo()
         resolve({ receivedQuestion: receivedQuestion })
       },
       onError: () => {
@@ -479,7 +533,8 @@ async function submitPendingAnswers() {
       timeoutMs: 240000,
       typewriter: true,
       onQuestion: handlePendingQuestion,
-      opener: ({ path, onOpen, onMessage, onQuestion, onDone, onError }) => openFetchSSE({
+      onTodo: handleTodoUpdate,
+      opener: ({ path, onOpen, onMessage, onQuestion, onTodo, onDone, onError }) => openFetchSSE({
         path,
         method: 'POST',
         body: {
@@ -489,6 +544,7 @@ async function submitPendingAnswers() {
         onOpen,
         onMessage,
         onQuestion,
+        onTodo: handleTodoUpdate,
         onDone,
         onError,
       }),
@@ -532,6 +588,12 @@ function handlePendingQuestion(payload) {
     content: '请先回答以下问题后继续。',
     status: 'done',
   })
+}
+
+function handleTodoUpdate(payload) {
+  const snapshot = payload?.todo
+  if (!snapshot || !Array.isArray(snapshot.items)) return
+  pinnedTodo.value = cloneTodoSnapshot(snapshot)
 }
 
 function isMultiSelected(questionId, label) {
@@ -693,6 +755,82 @@ function buildManusParams(message, attachment) {
   padding: var(--space-4);
 }
 
+.todo-pin {
+  margin: var(--space-4) var(--space-4) 0;
+  border: 1px solid rgba(240, 128, 98, 0.24);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 249, 242, 0.98), rgba(255, 241, 229, 0.95));
+  box-shadow: 0 14px 28px rgba(240, 128, 98, 0.12);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.todo-pin__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.todo-pin__header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.todo-pin__hint {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.todo-pin__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-pin__item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(206, 176, 152, 0.38);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 10px 12px;
+}
+
+.todo-pin__item.is-completed {
+  background: rgba(242, 251, 244, 0.95);
+  border-color: rgba(69, 164, 105, 0.24);
+}
+
+.todo-pin__item.is-in_progress {
+  border-color: rgba(240, 128, 98, 0.45);
+  background: rgba(255, 247, 239, 0.98);
+}
+
+.todo-pin__icon {
+  font-weight: 700;
+  color: var(--primary-deep);
+}
+
+.todo-pin__item.is-completed .todo-pin__icon {
+  color: #2f8f5b;
+}
+
+.todo-pin__content {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.todo-pin__status {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
 .chat-input-wrap {
   border-top: 1px solid var(--border);
   padding: var(--space-3) var(--space-4) var(--space-4);
@@ -837,6 +975,10 @@ function buildManusParams(message, attachment) {
 
   .chat-sidebar {
     position: static;
+  }
+
+  .todo-pin__header {
+    flex-direction: column;
   }
 }
 </style>

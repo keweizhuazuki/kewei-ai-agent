@@ -17,17 +17,19 @@ class ManusSessionServiceTest {
     void shouldSelectPptToolSubsetForPptPrompt() {
         ManusSessionService service = new ManusSessionService();
         ToolCallback ask = tool("AskUserQuestionTool");
+        ToolCallback todo = tool("TodoWrite");
         ToolCallback search = tool("searchWebsite");
         ToolCallback scrape = tool("scrapeWebsite");
         ToolCallback ppt = tool("create_pptx");
         ToolCallback terminate = tool("doTerminate");
         ToolCallback email = tool("sendEmail");
-        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, search, scrape, ppt, terminate, email});
+        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, todo, search, scrape, ppt, terminate, email});
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我做个ppt，内容是静安寺约会地点推荐。3页");
 
-        assertEquals(5, selected.length);
+        assertEquals(6, selected.length);
         assertTrue(contains(selected, "AskUserQuestionTool"));
+        assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "searchWebsite"));
         assertTrue(contains(selected, "scrapeWebsite"));
         assertTrue(contains(selected, "create_pptx"));
@@ -38,17 +40,19 @@ class ManusSessionServiceTest {
     void shouldSelectEmailToolSubsetForEmailPrompt() {
         ManusSessionService service = new ManusSessionService();
         ToolCallback ask = tool("AskUserQuestionTool");
+        ToolCallback todo = tool("TodoWrite");
         ToolCallback email = tool("sendEmail");
         ToolCallback file = tool("writeFile");
         ToolCallback search = tool("searchWebsite");
         ToolCallback terminate = tool("doTerminate");
-        ToolCallback[] all = new ToolCallback[]{ask, email, file, search, terminate};
+        ToolCallback[] all = new ToolCallback[]{ask, todo, email, file, search, terminate};
         ReflectionTestUtils.setField(service, "allTools", all);
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我发一封邮件给客户");
 
-        assertEquals(4, selected.length);
+        assertEquals(5, selected.length);
         assertTrue(contains(selected, "AskUserQuestionTool"));
+        assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "sendEmail"));
         assertTrue(contains(selected, "writeFile"));
         assertTrue(contains(selected, "doTerminate"));
@@ -58,17 +62,19 @@ class ManusSessionServiceTest {
     void shouldSelectPdfToolSubsetForPdfPrompt() {
         ManusSessionService service = new ManusSessionService();
         ToolCallback ask = tool("AskUserQuestionTool");
+        ToolCallback todo = tool("TodoWrite");
         ToolCallback download = tool("downloadResource");
         ToolCallback read = tool("readFile");
         ToolCallback write = tool("writeFile");
         ToolCallback pdf = tool("pdfToImages");
         ToolCallback terminate = tool("doTerminate");
         ToolCallback search = tool("searchWebsite");
-        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, download, read, write, pdf, terminate, search});
+        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, todo, download, read, write, pdf, terminate, search});
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我把这个PDF转成图片");
 
-        assertEquals(6, selected.length);
+        assertEquals(7, selected.length);
+        assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "downloadResource"));
         assertTrue(contains(selected, "pdfToImages"));
         assertTrue(contains(selected, "doTerminate"));

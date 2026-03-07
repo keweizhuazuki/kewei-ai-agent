@@ -1,6 +1,8 @@
 package com.kiwi.keweiaiagent.agent;
 
 import com.kiwi.keweiaiagent.agent.model.AgentState;
+import com.kiwi.keweiaiagent.agent.todo.TodoItem;
+import com.kiwi.keweiaiagent.agent.todo.TodoSnapshot;
 import com.kiwi.keweiaiagent.exception.BusinessException;
 import com.kiwi.keweiaiagent.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -84,6 +86,24 @@ class BaseAgentTest {
         agent.runStream("hello");
 
         assertTrue(waitForState(agent, AgentState.WAITING_FOR_USER_INPUT));
+    }
+
+    @Test
+    void shouldBuildTodoEventPayloadFromSessionStore() {
+        ManusSessionStore store = new ManusSessionStore();
+        store.putSession("chat-1", "hello", null);
+        store.saveTodoSnapshot("chat-1", new TodoSnapshot(List.of(
+                new TodoItem("plan", "拆解任务", "completed"),
+                new TodoItem("build", "执行任务", "in_progress")
+        )));
+        BaseAgent agent = new TestAgent();
+        agent.setManusSessionStore(store);
+        agent.setSessionId("chat-1");
+
+        BaseAgent.TodoEventPayload payload = agent.buildTodoEventPayload();
+
+        assertEquals(2, payload.todo().items().size());
+        assertEquals("build", payload.todo().items().get(1).id());
     }
 
     private static class TestAgent extends BaseAgent {

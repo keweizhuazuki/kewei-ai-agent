@@ -29,6 +29,7 @@
 - 增加图片上传与图片对话处理链路，支持基于文件路径的同步与流式图像聊天
 - 新增前端工程 `kewei-ai-agent-frontend`，用于承载应用界面与前后端联调
 - 升级到 Spring AI `2.0.0-M2`，补齐 Skills 模式、AskUserQuestion 两段式交互、PPT 生成能力与 Manus 分域执行链路
+- 新增 TodoWrite 任务规划能力，支持独立 demo 与 Manus 执行中的 todo 进度输出
 
 ## 目录结构（当前）
 
@@ -87,6 +88,7 @@
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/java/com/kiwi/keweiaiagent/tools`
   - `ToolRegistration`：统一注册工具回调
+  - `TodoWriteTool`：维护当前任务的结构化 todo 列表，供 Manus / demo 路径输出执行进度
   - `TerminateTool`：Agent 终止工具（用于多步任务结束信号）
   - `AskQuestionTool`：将控制台提问改造为 Web 可恢复的用户追问工具
   - `PptWriterTool`：根据结构化幻灯片描述在本地生成 `.pptx` 文件
@@ -122,6 +124,9 @@
   - `ManusSessionStore`：保存 Manus 会话、中间问题和用户补充答案
   - `ManusSessionService`：负责 Manus 启动、续跑、任务分域与工具子集选择
   - `PendingUserQuestionException`：用户补充信息中断信号，用于触发 `question` SSE 事件
+  - 运行中新增 `todo` SSE 事件：向前端输出最新 todo 列表快照
+- `src/main/java/com/kiwi/keweiaiagent/app`
+  - `TodoDemoApp`：最小 TodoWrite 演示入口，验证复杂任务先拆 todo 再执行
 - `src/main/java/com/kiwi/keweiaiagent/agent/model`
   - `AgentState`：Agent 状态枚举（IDLE/RUNNING/WAITING_FOR_USER_INPUT/FINISHED/ERROR）
 - `src/test/resources`
@@ -135,6 +140,12 @@
 - `kewei-ai-agent-frontend`
   - 独立前端工程：用于承载对话界面、图片上传交互、流式输出展示以及前后端联调
   - 当前已承接 Manus 的 `question` 事件消费、补充信息表单提交与流式续跑交互
+
+## TodoWrite 使用方式（当前实现）
+
+- 最小 demo：`GET /ai/love_app/chat/sse_emitter?option=todo-demo&chatId=demo-1&message=帮我拆解一个三步任务`
+- Manus 集成：`GET /ai/manus/chat?chatId=manus-1&message=帮我完成一个复杂任务`
+- 当模型调用 `TodoWrite` 后，Manus SSE 流会增加 `event:todo`，数据体中包含当前 todo 快照
 
 ## 进度记录
 

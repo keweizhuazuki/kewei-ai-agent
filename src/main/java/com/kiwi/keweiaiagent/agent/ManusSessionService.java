@@ -33,6 +33,7 @@ public class ManusSessionService {
         DOMAIN_TOOL_NAMES.put(TaskDomain.GENERAL, Set.of());
         DOMAIN_TOOL_NAMES.put(TaskDomain.PPT, Set.of(
                 "AskUserQuestionTool",
+                "TodoWrite",
                 "searchWebsite",
                 "scrapeWebsite",
                 "create_pptx",
@@ -40,6 +41,7 @@ public class ManusSessionService {
         ));
         DOMAIN_TOOL_NAMES.put(TaskDomain.PDF, Set.of(
                 "AskUserQuestionTool",
+                "TodoWrite",
                 "downloadResource",
                 "readFile",
                 "writeFile",
@@ -48,6 +50,7 @@ public class ManusSessionService {
         ));
         DOMAIN_TOOL_NAMES.put(TaskDomain.EMAIL, Set.of(
                 "AskUserQuestionTool",
+                "TodoWrite",
                 "readFile",
                 "writeFile",
                 "sendEmail",

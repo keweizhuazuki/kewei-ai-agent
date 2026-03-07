@@ -3,6 +3,7 @@ package com.kiwi.keweiaiagent.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kiwi.keweiaiagent.agent.ManusSessionService;
 import com.kiwi.keweiaiagent.app.LoveApp;
+import com.kiwi.keweiaiagent.app.TodoDemoApp;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
@@ -43,6 +44,9 @@ class AiControllerTest {
 
     @MockitoBean
     private ManusSessionService manusSessionService;
+
+    @MockitoBean
+    private TodoDemoApp todoDemoApp;
 
     @TestConfiguration
     static class TestBeans {
@@ -222,5 +226,31 @@ class AiControllerTest {
         }
 
         org.junit.jupiter.api.Assertions.assertTrue(body.contains("data:continued"));
+    }
+
+    @Test
+    void shouldUseTodoDemoAppWhenOptionIsTodoDemo() throws Exception {
+        when(todoDemoApp.stream(eq("拆解一个旅行计划"), eq("chat-1"))).thenReturn(Flux.just("todo-demo"));
+
+        MvcResult mvcResult = mockMvc.perform(get("/ai/love_app/chat/sse_emitter")
+                        .param("message", "拆解一个旅行计划")
+                        .param("chatId", "chat-1")
+                        .param("option", "todo-demo")
+                        .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(request().asyncStarted())
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andReturn();
+
+        String body = "";
+        for (int i = 0; i < 50; i++) {
+            body = mvcResult.getResponse().getContentAsString();
+            if (body.contains("event:done")) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("data:todo-demo"));
     }
 }

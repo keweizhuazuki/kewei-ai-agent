@@ -3,6 +3,7 @@ package com.kiwi.keweiaiagent.controller;
 import com.kiwi.keweiaiagent.agent.KeweiManus;
 import com.kiwi.keweiaiagent.agent.ManusSessionService;
 import com.kiwi.keweiaiagent.app.LoveApp;
+import com.kiwi.keweiaiagent.app.TodoDemoApp;
 import com.kiwi.keweiaiagent.constant.FileConstant;
 import com.kiwi.keweiaiagent.exception.BusinessException;
 import com.kiwi.keweiaiagent.exception.ErrorCode;
@@ -56,8 +57,14 @@ public class AiController {
     @Resource
     private ManusSessionService manusSessionService;
 
+    @Resource
+    private TodoDemoApp todoDemoApp;
+
     @GetMapping("/love_app/chat/sync")
     public Object doChatWithLoveAppSync(String message, String chatId, String option, String imagePath){
+        if (shouldUseTodoDemoOption(option)) {
+            return todoDemoApp.call(message, chatId);
+        }
         if (shouldUseSkillsOption(option)) {
             return loveApp.callWithSkills(message, chatId);
         }
@@ -69,6 +76,9 @@ public class AiController {
 
     @GetMapping(value = "/love_app/chat/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> doChatWithLoveAppSSE(String message, String chatId, String option, String imagePath){
+        if (shouldUseTodoDemoOption(option)) {
+            return todoDemoApp.stream(message, chatId);
+        }
         if (shouldUseSkillsOption(option)) {
             return loveApp.streamWithSkills(message, chatId)
                     .map(this::toJson);
@@ -100,6 +110,8 @@ public class AiController {
             try {
                 Flux<String> resultFlux = shouldUseSkillsOption(option)
                         ? loveApp.streamWithSkills(message, chatId).map(this::toJson)
+                        : shouldUseTodoDemoOption(option)
+                        ? todoDemoApp.stream(message, chatId)
                         : shouldUseImageOption(option, imagePath)
                         ? loveApp.doChatWithImageStream(message, chatId, imagePath)
                         : loveApp.doChatWithStream(message, chatId);
@@ -207,6 +219,10 @@ public class AiController {
 
     private boolean shouldUseSkillsOption(String option) {
         return "skills".equalsIgnoreCase(option);
+    }
+
+    private boolean shouldUseTodoDemoOption(String option) {
+        return "todo-demo".equalsIgnoreCase(option);
     }
 
     private String toJson(LoveApp.SkillChatResult result) {

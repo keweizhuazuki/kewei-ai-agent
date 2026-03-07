@@ -2,6 +2,7 @@ package com.kiwi.keweiaiagent.agent;
 
 
 import com.kiwi.keweiaiagent.agent.model.AgentState;
+import com.kiwi.keweiaiagent.agent.todo.TodoSnapshot;
 import com.kiwi.keweiaiagent.exception.BusinessException;
 import com.kiwi.keweiaiagent.exception.ErrorCode;
 import lombok.Data;
@@ -109,9 +110,16 @@ public abstract class BaseAgent {
     private SseEmitter executeStreamLoop(SseEmitter sseEmitter, boolean resumePendingStep) {
         CompletableFuture.runAsync(() -> {
             boolean activateSession = manusSessionStore != null && StringUtils.hasText(sessionId);
+            ManusSessionStore.TodoSnapshotListener todoListener = null;
             try {
                 if (activateSession) {
                     manusSessionStore.activateSession(sessionId);
+                    todoListener = snapshot -> sendTodoEvent(sseEmitter, snapshot);
+                    manusSessionStore.registerTodoSnapshotListener(sessionId, todoListener);
+                    TodoSnapshot existingSnapshot = manusSessionStore.getTodoSnapshot(sessionId);
+                    if (existingSnapshot != null) {
+                        sendTodoEvent(sseEmitter, existingSnapshot);
+                    }
                 }
                 for(int i = 0; i < maxSteps && state != AgentState.FINISHED; i++){
                     currentStep = i + 1;
@@ -144,6 +152,9 @@ public abstract class BaseAgent {
                 sendErrorEvent(sseEmitter, String.format("Agent %s error: %s", name, e.getMessage()));
                 sseEmitter.completeWithError(e);
             } finally {
+                if (activateSession && todoListener != null) {
+                    manusSessionStore.unregisterTodoSnapshotListener(sessionId, todoListener);
+                }
                 if (activateSession) {
                     manusSessionStore.clearActiveSession();
                 }
@@ -212,6 +223,28 @@ public abstract class BaseAgent {
         }
     }
 
+    private void sendTodoEvent(SseEmitter sseEmitter, TodoSnapshot snapshot) {
+        try {
+            TodoEventPayload payload = new TodoEventPayload(snapshot);
+            if (payload != null) {
+                sseEmitter.send(SseEmitter.event().name("todo").data(payload));
+            }
+        } catch (IOException ioException) {
+            log.warn("Agent {} failed to send todo event: {}", name, ioException.getMessage(), ioException);
+        }
+    }
+
+    TodoEventPayload buildTodoEventPayload() {
+        if (manusSessionStore == null || !StringUtils.hasText(sessionId)) {
+            return null;
+        }
+        TodoSnapshot snapshot = manusSessionStore.getTodoSnapshot(sessionId);
+        if (snapshot == null) {
+            return null;
+        }
+        return new TodoEventPayload(snapshot);
+    }
+
     public abstract String step();
 
     protected String resumeStep() {
@@ -228,5 +261,7 @@ public abstract class BaseAgent {
     }
 
     public record QuestionEventPayload(Object questions) {}
+
+    public record TodoEventPayload(TodoSnapshot todo) {}
 
 }

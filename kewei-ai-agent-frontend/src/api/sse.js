@@ -10,7 +10,7 @@ function buildUrl(path, params = {}) {
   return url
 }
 
-export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessage, onQuestion, onDone, onError }) {
+export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessage, onQuestion, onTodo, onDone, onError }) {
   const es = new EventSource(buildUrl(path, params))
   let closed = false
   let done = false
@@ -46,6 +46,10 @@ export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessa
       hasQuestion = true
       onQuestion?.(event.data || '')
     })
+    es.addEventListener('todo', (event) => {
+      if (done || closed) return
+      onTodo?.(event.data || '')
+    })
     es.addEventListener('done', (event) => {
       if (done || closed) return
       done = true
@@ -78,7 +82,7 @@ export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessa
   }
 }
 
-export function openFetchSSE({ path, method = 'POST', body, onOpen, onMessage, onQuestion, onDone, onError }) {
+export function openFetchSSE({ path, method = 'POST', body, onOpen, onMessage, onQuestion, onTodo, onDone, onError }) {
   let closed = false
   const controller = new AbortController()
 
@@ -137,6 +141,8 @@ export function openFetchSSE({ path, method = 'POST', body, onOpen, onMessage, o
           const data = line.slice(5).trim()
           if (eventName === 'question') {
             onQuestion?.(data)
+          } else if (eventName === 'todo') {
+            onTodo?.(data)
           } else if (eventName === 'done' || data === '[DONE]') {
             onDone?.(data || '[DONE]')
             close()

@@ -15,7 +15,20 @@
       </figure>
     </div>
 
-    <div v-if="isMarkdown" class="message-content markdown-body" v-html="htmlContent" />
+    <section v-if="message.todoSnapshot" class="todo-card">
+      <div class="todo-card__header">
+        <strong>任务清单</strong>
+        <span>{{ completedCount }}/{{ todoItems.length }} 已完成</span>
+      </div>
+      <div class="todo-card__list">
+        <div v-for="item in todoItems" :key="item.id" class="todo-card__item" :class="`is-${item.status}`">
+          <span class="todo-card__icon">{{ item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '…' : '○' }}</span>
+          <span class="todo-card__content">{{ item.content }}</span>
+          <span class="todo-card__status">{{ formatStatus(item.status) }}</span>
+        </div>
+      </div>
+    </section>
+    <div v-else-if="isMarkdown" class="message-content markdown-body" v-html="htmlContent" />
     <pre v-else class="message-content">{{ message.content }}</pre>
 
     <div class="message-actions">
@@ -46,11 +59,79 @@ const props = defineProps({
 defineEmits(['retry', 'copy'])
 
 const { message } = toRefs(props)
-const isMarkdown = computed(() => message.value.role === 'assistant')
+const todoItems = computed(() => message.value.todoSnapshot?.items || [])
+const completedCount = computed(() => todoItems.value.filter((item) => item.status === 'completed').length)
+const isMarkdown = computed(() => message.value.role === 'assistant' && !message.value.todoSnapshot)
 const htmlContent = computed(() => renderAssistantContent(message.value.content || ''))
+
+function formatStatus(status) {
+  if (status === 'completed') return '已完成'
+  if (status === 'in_progress') return '进行中'
+  return '待处理'
+}
 </script>
 
 <style scoped>
+.todo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.todo-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.todo-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-card__item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  background: #fffaf4;
+}
+
+.todo-card__item.is-completed {
+  background: #f3fbf5;
+  border-color: rgba(69, 164, 105, 0.22);
+}
+
+.todo-card__item.is-in_progress {
+  background: #fff6ee;
+  border-color: rgba(240, 128, 98, 0.35);
+}
+
+.todo-card__icon {
+  font-weight: 700;
+  color: var(--primary-deep);
+}
+
+.todo-card__item.is-completed .todo-card__icon {
+  color: #2f8f5b;
+}
+
+.todo-card__content {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.todo-card__status {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
 .message-attachments {
   display: flex;
   flex-wrap: wrap;

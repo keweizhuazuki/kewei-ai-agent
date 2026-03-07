@@ -1,6 +1,9 @@
 package com.kiwi.keweiaiagent.tools;
 
+import com.kiwi.keweiaiagent.agent.ManusSessionStore;
+import com.kiwi.keweiaiagent.agent.todo.CommunityTodoMapper;
 import org.springaicommunity.agent.tools.AskUserQuestionTool;
+import org.springaicommunity.agent.tools.TodoWriteTool;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +15,18 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ToolRegistration {
     @Bean
+    public TodoWriteTool todoWriteTool(ManusSessionStore manusSessionStore) {
+        return TodoWriteTool.builder()
+                .todoEventHandler(todos -> {
+                    String sessionId = manusSessionStore.currentSessionId();
+                    if (sessionId != null && !sessionId.isBlank()) {
+                        manusSessionStore.saveTodoSnapshot(sessionId, CommunityTodoMapper.toSnapshot(todos));
+                    }
+                })
+                .build();
+    }
+
+    @Bean
     public ToolCallback[] allTools(
             EmailTool emailTool,
             FileOperationTool fileOperationTool,
@@ -22,7 +37,8 @@ public class ToolRegistration {
             WebScrapingTool webScrapingTool,
             TerminateTool terminateTool,
             AskUserQuestionTool askUserQuestionTool,
-            PptWriterTool pptWriterTool
+            PptWriterTool pptWriterTool,
+            TodoWriteToolAdapter todoWriteToolAdapter
     ){
         return ToolCallbacks.from(
                 emailTool,
@@ -34,7 +50,8 @@ public class ToolRegistration {
                 webScrapingTool,
                 terminateTool,
                 askUserQuestionTool,
-                pptWriterTool
+                pptWriterTool,
+                todoWriteToolAdapter
         );
     }
 }
