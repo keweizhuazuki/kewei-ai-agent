@@ -26,18 +26,36 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 工具调用型智能体，实现基于工具调用的思考、执行与续跑逻辑。
+ */
 @EqualsAndHashCode(callSuper = true)
 @Data
 @Slf4j
 public class ToolCallAgent extends ReActAgent{
 
+    /**
+     * 当前智能体可调用的工具集合。
+     */
     private final ToolCallback[] availableTools;
 
+    /**
+     * 最近一次模型返回的工具调用响应。
+     */
     private ChatResponse toolCallChatResponse;
 
+    /**
+     * 工具调用管理器，负责调度并执行工具。
+     */
     private final ToolCallingManager toolCallingManager;
 
+    /**
+     * 当前工具调用场景使用的模型选项。
+     */
     private final ChatOptions chatOptions;
+    /**
+     * 最近一次助手生成的文本结果。
+     */
     private String latestAssistantText;
 
     public ToolCallAgent(ToolCallback[] toolCalbacks){
@@ -51,6 +69,9 @@ public class ToolCallAgent extends ReActAgent{
                 .build();
     }
 
+    /**
+     * 驱动模型生成当前步骤的工具调用计划或文本回复。
+     */
     @Override
     public boolean think() {
         try {
@@ -98,6 +119,9 @@ public class ToolCallAgent extends ReActAgent{
         }
     }
 
+    /**
+     * 执行模型返回的工具调用，并汇总工具执行结果。
+     */
     @Override
     public String act() {
         if(!toolCallChatResponse.hasToolCalls()){
@@ -135,6 +159,9 @@ public class ToolCallAgent extends ReActAgent{
         return results;
     }
 
+    /**
+     * 完成一次工具调用型智能体的完整步骤。
+     */
     @Override
     public String step() {
         try {
@@ -151,6 +178,9 @@ public class ToolCallAgent extends ReActAgent{
         }
     }
 
+    /**
+     * 恢复处理中断步骤时的工具调用执行。
+     */
     @Override
     protected String resumeStep() {
         if (toolCallChatResponse != null && toolCallChatResponse.hasToolCalls()) {
@@ -159,6 +189,9 @@ public class ToolCallAgent extends ReActAgent{
         return step();
     }
 
+    /**
+     * 拼装附带工具约束的系统提示词。
+     */
     private String buildSystemPrompt() {
         String systemPrompt = StrUtil.blankToDefault(getSystemPrompt(), "");
         String nextStepPrompt = StrUtil.blankToDefault(getNextStepPrompt(), "");
