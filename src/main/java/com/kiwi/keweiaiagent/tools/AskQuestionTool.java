@@ -11,6 +11,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 提问工具，负责将需要用户补充的信息转成结构化问题。
+ */
 @Component
 public class AskQuestionTool {
 
