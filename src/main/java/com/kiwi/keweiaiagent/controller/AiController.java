@@ -36,30 +36,57 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * AI 控制器，负责暴露聊天、Manus 会话和文件上传等接口。
+ */
 @RestController
 @RequestMapping("/ai")
 public class AiController {
 
+    /**
+     * 默认 SSE 连接超时时间。
+     */
     private static final long DEFAULT_SSE_TIMEOUT = 0L;
 
+    /**
+     * 恋爱助手应用服务。
+     */
     @Resource
     private LoveApp loveApp;
 
+    /**
+     * 当前系统注册的全部工具。
+     */
     @Resource
     private ToolCallback[] allTools;
 
+    /**
+     * 对话使用的大模型实例。
+     */
     @Resource
     private ChatModel ollamaChatModel;
 
+    /**
+     * JSON 序列化工具。
+     */
     @Resource
     private ObjectMapper objectMapper;
 
+    /**
+     * Manus 会话服务。
+     */
     @Resource
     private ManusSessionService manusSessionService;
 
+    /**
+     * Todo 演示应用服务。
+     */
     @Resource
     private TodoDemoApp todoDemoApp;
 
+    /**
+     * 同步调用恋爱助手完成一次对话。
+     */
     @GetMapping("/love_app/chat/sync")
     public Object doChatWithLoveAppSync(String message, String chatId, String option, String imagePath){
         if (shouldUseTodoDemoOption(option)) {
@@ -74,6 +101,9 @@ public class AiController {
         return loveApp.doChat(message,chatId);
     }
 
+    /**
+     * 以 SSE 方式调用恋爱助手并返回流式结果。
+     */
     @GetMapping(value = "/love_app/chat/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> doChatWithLoveAppSSE(String message, String chatId, String option, String imagePath){
         if (shouldUseTodoDemoOption(option)) {
@@ -89,6 +119,9 @@ public class AiController {
         return loveApp.doChatWithStream(message,chatId);
     }
 
+    /**
+     * 通过 ServerSentEvent 包装流式输出。
+     */
     @GetMapping(value = "/love_app/chat/server_sent_event")
     public Flux<ServerSentEvent<String>> zdoChatWithLoveAppServerSentEvent(String message, String chatId, String option, String imagePath){
         Flux<String> contentFlux = shouldUseSkillsOption(option)
@@ -102,6 +135,9 @@ public class AiController {
                         .build());
     }
 
+    /**
+     * 通过 SseEmitter 直接向客户端推送恋爱助手回复。
+     */
     @GetMapping(value = "/love_app/chat/sse_emitter", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter doChatWithLoveAppSseEmitter(String message, String chatId, String option, String imagePath) {
         SseEmitter emitter = new SseEmitter(DEFAULT_SSE_TIMEOUT);
@@ -154,16 +190,25 @@ public class AiController {
     }
 
 
+    /**
+     * 启动 Manus 智能体流式会话。
+     */
     @GetMapping("manus/chat")
     public SseEmitter doChatWithManus(String message, String chatId, String option, String imagePath){
         return manusSessionService.startChatStream(chatId, message);
     }
 
+    /**
+     * 提交补充答案后继续执行 Manus 会话。
+     */
     @PostMapping(value = "manus/chat/continue", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter continueChatWithManus(@RequestBody ManusContinueRequest request) {
         return manusSessionService.continueChatStream(request.chatId(), request.answers());
     }
 
+    /**
+     * 上传恋爱助手聊天中使用的图片文件。
+     */
     @PostMapping(value = "/love_app/image/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, String> uploadLoveAppImage(
             @RequestParam("chatId") String chatId,
@@ -233,6 +278,9 @@ public class AiController {
         }
     }
 
+    /**
+     * Manus 续聊请求对象，封装继续执行时提交的答案集合。
+     */
     public record ManusContinueRequest(String chatId, Map<String, String> answers) {}
 
 }
