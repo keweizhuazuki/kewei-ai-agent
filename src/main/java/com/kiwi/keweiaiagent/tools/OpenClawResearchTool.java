@@ -15,15 +15,36 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * OpenClaw 研究委派工具，负责将研究任务转交给外部代理执行。
+ */
 @Component
 @Slf4j
 public class OpenClawResearchTool {
 
+    /**
+     * JSON 序列化工具，用于解析 OpenClaw 返回结果。
+     */
     private final ObjectMapper objectMapper;
+    /**
+     * OpenClaw 命令执行器。
+     */
     private final OpenClawCommandRunner commandRunner;
+    /**
+     * 调用 OpenClaw 的基础命令。
+     */
     private final String command;
+    /**
+     * 委派研究任务时使用的代理标识。
+     */
     private final String agentId;
+    /**
+     * 外部命令执行超时时间。
+     */
     private final Duration timeout;
+    /**
+     * 生成远程会话标识时使用的前缀。
+     */
     private final String sessionPrefix;
 
     public OpenClawResearchTool(
@@ -42,6 +63,9 @@ public class OpenClawResearchTool {
         this.sessionPrefix = sessionPrefix;
     }
 
+    /**
+     * 将研究任务委托给 OpenClaw 执行并整理结果。
+     */
     @Tool(description = "Delegate web research to the remote OpenClaw execution agent and return a structured handoff summary", returnDirect = false)
     public String delegateResearchToOpenClaw(
             @ToolParam(description = "Research goal or question that needs web search and page collection") String task,
@@ -110,6 +134,9 @@ public class OpenClawResearchTool {
                 """.formatted(task, locale);
     }
 
+    /**
+     * 为外部研究任务生成唯一会话标识。
+     */
     private String buildSessionId() {
         String prefix = StrUtil.blankToDefault(sessionPrefix, "spring-ai-research")
                 .trim()
@@ -117,6 +144,9 @@ public class OpenClawResearchTool {
         return prefix + "-" + UUID.randomUUID();
     }
 
+    /**
+     * 从 OpenClaw 返回数据中提取核心研究结论。
+     */
     private String extractResearchText(String stdout) throws IOException {
         if (StrUtil.isBlank(stdout)) {
             return "OpenClaw delegation failed: empty response.";
