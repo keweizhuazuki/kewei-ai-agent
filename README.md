@@ -7,7 +7,6 @@
 
 - 本文是根据当前仓库代码状态对前期步骤进行回填整理。
 - 不包含代码示例，重点记录实现思路、目录结构和阶段性成果。
-- 后续你继续在这个对话里同步进度，我可以持续补充到这里。
 
 ## 项目目标（当前阶段）
 
@@ -30,6 +29,7 @@
 - 新增前端工程 `kewei-ai-agent-frontend`，用于承载应用界面与前后端联调
 - 升级到 Spring AI `2.0.0-M2`，补齐 Skills 模式、AskUserQuestion 两段式交互、PPT 生成能力与 Manus 分域执行链路
 - 新增 TodoWrite 任务规划能力，支持独立 demo 与 Manus 执行中的 todo 进度输出
+- 增加 Spring AI 主控 + OpenClaw 调研执行代理协作链路，支持将网页调研任务委派给独立 Agent 返回结构化结果
 
 ## 目录结构（当前）
 
@@ -88,9 +88,11 @@
   - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/java/com/kiwi/keweiaiagent/tools`
   - `ToolRegistration`：统一注册工具回调
-  - `TodoWriteTool`：维护当前任务的结构化 todo 列表，供 Manus / demo 路径输出执行进度
+  - `TodoWriteToolAdapter`：适配社区版 `TodoWriteTool` 与 Spring AI 当前参数绑定行为
   - `TerminateTool`：Agent 终止工具（用于多步任务结束信号）
   - `AskQuestionTool`：将控制台提问改造为 Web 可恢复的用户追问工具
+  - `OpenClawResearchTool`：通过 `openclaw agent --json` 把网页调研任务委派给 OpenClaw，并回收最终文本结果
+  - `OpenClawCommandRunner` / `ShellOpenClawCommandRunner`：封装 OpenClaw CLI 子进程调用与超时控制
   - `PptWriterTool`：根据结构化幻灯片描述在本地生成 `.pptx` 文件
   - `EmailTool`：邮件发送工具（SMTP）
   - `TimeTool`：时间查询工具（支持时区）
@@ -105,6 +107,7 @@
 - `src/main/resources`
   - `application.yml`：应用、端口、Profile、AI 模型、pgvector 预配置与接口文档配置
   - `application-local.yml`：本地环境数据源/Redis/ChatMemory 等配置（含动态切换参数）
+  - 新增 `openclaw.agent.*` 配置：用于声明 OpenClaw CLI 命令、默认 agent、超时和研究会话前缀
   - `static/images`：多模态与工具调用相关图片资源（如 `test.png`、`couple.png`）
 - `src/test/java/com/kiwi/keweiaiagent`
   - 应用启动测试、`LoveApp` 对话能力测试（文本 / 结构化 / 多模态 / RAG / Tools）
@@ -125,6 +128,10 @@
   - `ManusSessionService`：负责 Manus 启动、续跑、任务分域与工具子集选择
   - `PendingUserQuestionException`：用户补充信息中断信号，用于触发 `question` SSE 事件
   - 运行中新增 `todo` SSE 事件：向前端输出最新 todo 列表快照
+- `src/main/java/com/kiwi/keweiaiagent/agent/todo`
+  - `TodoItem`：前端消费用的单条 todo 数据结构
+  - `TodoSnapshot`：当前任务 todo 列表快照
+  - `CommunityTodoMapper`：把社区版 `TodoWriteTool` 的数据结构映射为本项目快照结构
 - `src/main/java/com/kiwi/keweiaiagent/app`
   - `TodoDemoApp`：最小 TodoWrite 演示入口，验证复杂任务先拆 todo 再执行
 - `src/main/java/com/kiwi/keweiaiagent/agent/model`
@@ -146,6 +153,14 @@
 - 最小 demo：`GET /ai/love_app/chat/sse_emitter?option=todo-demo&chatId=demo-1&message=帮我拆解一个三步任务`
 - Manus 集成：`GET /ai/manus/chat?chatId=manus-1&message=帮我完成一个复杂任务`
 - 当模型调用 `TodoWrite` 后，Manus SSE 流会增加 `event:todo`，数据体中包含当前 todo 快照
+
+## OpenClaw 调研代理（当前实现）
+
+- 默认调研主链路采用“Spring AI 主控 + OpenClaw 执行代理”分层：
+  - Spring AI / Manus 负责任务拆解、工具路由、结果汇总
+  - OpenClaw 负责网页调研执行，并通过 `openclaw agent --json` 返回最终结果
+- 当前 PPT 与 research 类任务默认注入 `delegateResearchToOpenClaw`
+- 本地 `WebSearchTool` / `WebScrapingTool` 仍保留实现和测试，但不再作为默认调研主工具集
 
 ## 进度记录
 
@@ -1850,6 +1865,397 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 - Manus 的续跑策略已从“恢复旧状态”转向“重组 prompt 后启动新 agent”，整体更稳定
 - Manus 已具备按任务域筛选工具子集的能力，为后续继续扩展 PDF、Email 等领域 agent 做好了结构准备
 
+## 22. 接入 TodoWrite 任务规划能力，增加多应用场景下的分层任务执行
+
+### 本阶段目标
+
+- 在复杂任务场景下先生成 todo 清单，再逐步执行具体工具，减少模型“做到一半忘任务”的问题
+- 将社区版 `TodoWriteTool` 接入当前工程，并用于 Manus 和独立 demo 两条路径
+- 在后端执行过程中持续输出 todo 快照，让前端可以实时看到任务拆解和进度变化
+- 解决 Spring AI `2.0.0-M2` 下社区版 `TodoWriteTool` 参数绑定不兼容的问题
+
+### 主要新增/修改文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/TodoWriteToolAdapter.java`
+  - 类：`TodoWriteToolAdapter`
+  - 方法：
+    - `todoWrite(List<TodoWriteTool.Todos.TodoItem> todos)`：对外继续暴露 `TodoWrite` 工具名，但方法签名改为直接接收内部 todo 数组项列表
+  - 作用：
+    - 这是本阶段最关键的兼容层
+    - Spring AI 当前版本对单参数工具方法的绑定行为，会把 `{"todos":[...]}` 中的内部数组抽出来再做反序列化
+    - 社区版 `TodoWriteTool` 原本要的是包装对象 `TodoWriteTool.Todos`
+    - 适配器先用 `List<TodoItem>` 接住 Spring AI 实际传入的数组，再在方法内部手动包装成 `new TodoWriteTool.Todos(todos)`，最后调用社区版真正的 `delegate.todoWrite(...)`
+  - 本阶段意义：
+    - 修复点不在 Prompt，也不在 Jackson 本身，而在“社区版方法签名”和“Spring AI 当前绑定行为”之间的兼容层
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 类：`ToolRegistration`
+  - 方法：
+    - `todoWriteTool(ManusSessionStore manusSessionStore)`：实例化社区版 `TodoWriteTool`，并在 todo 变更时把快照写入当前会话
+    - `allTools(...)`：把 `TodoWriteToolAdapter` 纳入全局工具注册
+  - 作用：
+    - 保留社区版工具实现不动
+    - 通过事件回调把 todo 状态同步到 `ManusSessionStore`
+    - 通过适配器对外暴露稳定的工具调用入口
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/todo/TodoItem.java`
+  - 记录：`TodoItem`
+  - 字段：
+    - `id`：本地生成的 todo 标识
+    - `content`：任务内容
+    - `status`：任务状态
+  - 作用：
+    - 作为前端展示和 SSE 输出时的最小单元，避免前端直接依赖社区版复杂结构
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/todo/TodoSnapshot.java`
+  - 记录：`TodoSnapshot`
+  - 字段：
+    - `items`：当前任务的 todo 列表快照
+  - 作用：
+    - 用于表示某一时刻的完整 todo 状态，方便后端保存、SSE 推送和前端渲染
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/todo/CommunityTodoMapper.java`
+  - 类：`CommunityTodoMapper`
+  - 方法：
+    - `toSnapshot(TodoWriteTool.Todos todos)`：把社区版 `TodoWriteTool` 的包装对象映射为项目内部的 `TodoSnapshot`
+  - 作用：
+    - 将社区版数据结构和项目自己的前端协议解耦
+    - 把社区版的 todo 列表转换为更稳定、更轻量的前端快照结构
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java`
+  - 类：`ManusSessionStore`
+  - 新增内容：
+    - `TodoSnapshotListener`：todo 快照监听器接口
+    - `todoSnapshot`：加入到 `ManusSession` 会话快照中的 todo 状态
+  - 新增/强化的方法：
+    - `saveTodoSnapshot(String chatId, TodoSnapshot todoSnapshot)`：保存并广播当前会话的 todo 快照
+    - `getTodoSnapshot(String chatId)`：读取当前快照
+    - `registerTodoSnapshotListener(...)` / `unregisterTodoSnapshotListener(...)`：为当前会话注册或移除 SSE 推送监听器
+  - 作用：
+    - 让 todo 状态和提问状态一样，成为会话级中间状态的一部分
+    - 支撑后端执行时持续向前端推送 todo 变化
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/BaseAgent.java`
+  - 类：`BaseAgent`
+  - 新增/强化的方法与能力：
+    - `sendTodoEvent(...)`：发送 `event: todo`
+    - `buildTodoEventPayload()`：构建当前 todo 快照的事件载荷
+    - 在 `executeStreamLoop(...)` 中注册 `TodoSnapshotListener`，并在有历史 todo 时先补发一次
+  - 作用：
+    - 把 TodoWrite 从“工具内部状态”提升为“Agent 执行期可见的流式进度事件”
+    - 让前端能实时看到任务从 `pending -> in_progress -> completed` 的变化过程
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`
+  - 类：`KeweiManus`
+  - 本阶段变化：
+    - 在 system prompt 中明确要求复杂任务先调用 `TodoWrite`
+    - 在 next-step prompt 中要求每完成一个子任务或进入下一阶段时，及时刷新 todo 清单
+    - `maxSteps` 调整为 `20`
+  - 作用：
+    - 把 todo 规划从“可选能力”提升为 Manus 的默认工作方式
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`
+  - 类：`ManusSessionService`
+  - 本阶段变化：
+    - 各任务域工具子集中增加 `TodoWrite`
+  - 作用：
+    - 让 PPT / PDF / Email 等复杂任务在执行前都能先做任务拆解
+    - 维持“先分域，再给小工具集”的稳定策略，同时加入 todo 规划能力
+
+- `src/main/java/com/kiwi/keweiaiagent/app/TodoDemoApp.java`
+  - 类：`TodoDemoApp`
+  - 方法：
+    - `call(String message, String chatId)`：最小同步演示入口
+    - `stream(String message, String chatId)`：最小流式演示入口
+  - 作用：
+    - 提供一个只保留 `TodoWrite / AskUserQuestionTool / doTerminate` 的轻量 demo 环境
+    - 便于单独验证“先拆 todo 再执行”的工作方式，而不受其他工具干扰
+
+- `src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`
+  - 类：`AiController`
+  - 本阶段变化：
+    - `doChatWithLoveAppSync(...)`：增加 `option=todo-demo` 分支
+    - `doChatWithLoveAppSSE(...)`：增加 `todo-demo` 流式分支
+    - `doChatWithLoveAppSseEmitter(...)`：增加 `todo-demo` 在 `sse_emitter` 模式下的支持
+    - `shouldUseTodoDemoOption(String option)`：识别 todo demo 模式
+  - 作用：
+    - 让 TodoWrite 不仅在 Manus 中可用，也有独立演示入口，便于联调和说明
+
+- `src/test/java/com/kiwi/keweiaiagent/controller/AiControllerTest.java`
+  - 类：`AiControllerTest`
+  - 方法：
+    - `shouldUseTodoDemoAppWhenOptionIsTodoDemo()`：验证 `option=todo-demo` 时会走 `TodoDemoApp`
+  - 作用：
+    - 确认新的 demo 入口已被控制器正确接入
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/TodoWriteToolTest.java`
+  - 类：`TodoWriteToolTest`
+  - 方法：
+    - `shouldAcceptStructuredJsonArgumentsAndSaveTodoSnapshot()`：验证适配器可以正确接收结构化 JSON，并把 todo 快照写入会话
+    - `shouldRejectMultipleInProgressItems()`：验证社区版 TodoWrite 的业务约束仍然生效（一次只能有一个 `in_progress`）
+  - 作用：
+    - 证明适配层没有破坏社区版工具原本的校验逻辑
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/KeweiManusPromptTest.java`
+  - 类：`KeweiManusPromptTest`
+  - 方法：
+    - `shouldMentionTodoPlanningForComplexTasks()`：验证 Manus 的 prompt 已明确要求复杂任务优先调用 `TodoWrite`
+  - 作用：
+    - 保证 Prompt 层的规划约束不会被后续修改意外删掉
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/ManusSessionStoreTest.java`
+  - 类：`ManusSessionStoreTest`
+  - 方法：
+    - `shouldSaveAndReadTodoSnapshotForSession()`：验证 todo 快照可写可读
+    - `shouldClearTodoSnapshotWhenSessionRemoved()`：验证会话删除时快照一起清理
+    - `shouldNotifyTodoSnapshotListenersImmediately()`：验证监听器会立即收到 todo 更新
+    - `shouldRemoveTodoSnapshotListenersWithSession()`：验证会话移除后监听器也会清理
+  - 作用：
+    - 给 todo 状态存储与事件通知机制提供回归保障
+
+- `kewei-ai-agent-frontend/src/api/sse.js`
+  - 方法：
+    - `openSSE(...)`：新增 `todo` 事件监听
+    - `openFetchSSE(...)`：新增 `todo` 事件解析
+  - 作用：
+    - 前端可以像消费 `message / question / done` 一样，消费后端新增的 `todo` 事件
+
+- `kewei-ai-agent-frontend/src/views/ChatView.vue`
+  - 主要新增逻辑：
+    - `pinnedTodo`：保存当前置顶展示的 todo 快照
+    - `handleTodoUpdate(payload)`：接收并更新当前任务 todo
+    - `archivePinnedTodo()`：在任务结束后把置顶 todo 归档到聊天历史
+    - `sendViaSSE(...)`：统一接入 `onTodo`
+  - 作用：
+    - 在聊天界面顶部固定展示当前任务拆解情况
+    - 任务完成后再把 todo 快照作为一条历史消息存档
+
+- `kewei-ai-agent-frontend/src/components/ChatMessage.vue`
+  - 作用：
+    - 增加 todo 卡片渲染能力
+    - 可直观看到每一项任务的状态、完成数与当前进度
+
+### 踩坑记录
+
+#### 1. 社区版 `TodoWriteTool` 的方法签名与 Spring AI 当前参数绑定行为不兼容
+
+- 问题表现：
+  - 报错信息：
+    - `Cannot deserialize value of type org.springaicommunity.agent.tools.TodoWriteTool$Todos from Array value`
+  - 模型已经开始正确调用 `TodoWrite`
+  - 但工具真正执行前，在参数绑定阶段就失败了
+
+- 根因：
+  - 社区版工具原本的方法签名是接收包装对象：
+    - `TodoWriteTool.Todos`
+  - 理论结构应该是：
+    - `{"todos":[...]}`
+  - 但在当前 Spring AI `2.0.0-M2` 的工具参数绑定行为下，单参数方法会把内部字段先抽出来，再做反序列化
+  - 最终实际传给 Java 方法的不是整个对象，而是内部数组：
+    - `[ ... ]`
+  - 于是就出现了：
+    - 目标类型是对象 `TodoWriteTool.Todos`
+    - 实际 JSON 却是数组 `[ ... ]`
+  - Jackson 无法把数组直接反序列化成包装对象，所以报错
+
+- 处理方式：
+  - 不修改社区版 `TodoWriteTool`
+  - 新增 `TodoWriteToolAdapter`
+  - 对外暴露的工具名仍然是 `TodoWrite`
+  - 但方法签名改成：
+    - `List<TodoWriteTool.Todos.TodoItem> todos`
+  - 这样 Spring AI 实际传入的数组就能被正常接住
+  - 然后在 Java 内部手动包装为：
+    - `new TodoWriteTool.Todos(todos)`
+  - 再委托给社区版真正的：
+    - `delegate.todoWrite(...)`
+
+#### 2. 问题不在模型不调用，而在“调用后参数绑定炸掉”
+
+- 问题表现：
+  - 前期模型没有调用 `TodoWrite`
+  - 后来调整 prompt 和工具名后，模型已经会调用 `TodoWrite`
+  - 但一调用就失败
+
+- 根因：
+  - Prompt 层和工具选择已经打通
+  - 真正的问题发生在 Java 工具方法的入参绑定层，而不是模型输出层
+
+- 处理方式：
+  - 不去强行改模型输出结构
+  - 而是通过适配层调整 Java 方法签名，让它匹配 Spring AI 当前真实传入的数据形态
+
+### 本阶段结果
+
+- 已接入社区版 `TodoWriteTool`，并完成适配层封装
+- Manus 在复杂任务里已具备“先列 todo，再逐步执行”的默认工作方式
+- Todo 状态已能通过 `ManusSessionStore` 保存，并以 `event:todo` 的形式实时推送到前端
+- 前端已支持置顶展示当前任务 todo，并在任务完成后归档到历史消息
+- 新增 `todo-demo` 演示入口，便于独立验证 TodoWrite 工作流
+- 已解决 Spring AI `2.0.0-M2` 下社区版 TodoWrite 方法签名不兼容的问题
+
+## 23. 接入 OpenClaw 远程调研委托能力，完善多进程管线并发处理
+
+### 本阶段目标
+
+- 把默认研究类任务从本地网页搜索/抓取，调整为委托给独立的 OpenClaw 执行代理
+- 让 Manus 在复杂任务里保持“编排层”职责，只负责拆解、委托和汇总，不在本地重复伪造远程调研的内部步骤
+- 为 OpenClaw 命令执行增加稳定的进程读写处理，避免 `stdin/stdout/stderr` 管线阻塞
+- 为整个项目收官阶段补齐一套更清晰的研究任务架构
+
+### 主要新增/修改文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/OpenClawCommandRunner.java`
+  - 接口：`OpenClawCommandRunner`
+  - 方法：
+    - `run(List<String> command, Duration timeout)`：统一封装 OpenClaw 命令执行入口
+  - 数据结构：
+    - `CommandResult`：返回进程退出码、标准输出、标准错误
+  - 作用：
+    - 把“如何执行外部 OpenClaw 命令”从业务工具中抽离，方便后续替换实现或单元测试模拟
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/ShellOpenClawCommandRunner.java`
+  - 类：`ShellOpenClawCommandRunner`
+  - 方法：
+    - `run(...)`：启动进程、并发读取 `stdout/stderr`、等待结束、处理超时和异常
+    - `readStreamAsync(...)`：异步读取单个输出流
+    - `awaitStream(...)`：等待异步读取结果
+    - `firstNonBlank(...)`、`preview(...)`：错误信息与日志预览辅助方法
+  - 作用：
+    - 这是最终解决进程阻塞问题的关键类
+    - 通过并发读取标准输出和标准错误，避免子进程因为某个输出缓冲区未被及时消费而卡死
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java`
+  - 类：`OpenClawResearchTool`
+  - 方法：
+    - `delegateResearchToOpenClaw(String task, String locale)`：对外暴露给大模型的研究委托工具
+    - `buildCommand(String task, String locale)`：拼装 `openclaw agent` 命令参数
+    - `buildResearchPrompt(String task, String locale)`：构造发送给 OpenClaw 执行代理的中文调研提示词
+    - `extractResearchText(String stdout)`：从 OpenClaw 的 JSON 响应中提取最终调研结果
+    - `buildSessionId()`：生成独立的委托会话 id
+  - 作用：
+    - 将“网页搜索、打开页面、收集来源、汇总摘要”这一整段研究过程委托给外部 OpenClaw 执行代理
+    - 当前 Spring AI 主应用只保留编排层角色，不直接暴露本地网页搜索/抓取给默认 Agent 主路径
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 类：`ToolRegistration`
+  - 本阶段变化：
+    - `allTools(...)` 中加入 `OpenClawResearchTool`
+    - 默认工具集中移除 `WebSearchTool`、`WebScrapingTool`
+  - 作用：
+    - 把默认研究路径统一切到远程委托工具
+    - 保持默认工具集更聚焦，减少本地工具和远程研究路径的职责重叠
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`
+  - 类：`ManusSessionService`
+  - 本阶段变化：
+    - 新增 `TaskDomain.RESEARCH`
+    - `RESEARCH` 任务域工具子集调整为：
+      - `AskUserQuestionTool`
+      - `TodoWrite`
+      - `delegateResearchToOpenClaw`
+      - `doTerminate`
+    - `PPT` 任务域也加入 `delegateResearchToOpenClaw`
+    - `routeTaskDomain(...)` 增加“调研 / 搜集资料 / 网页来源 / 研究一下”等关键词识别
+  - 作用：
+    - 让研究类任务和带资料搜集需求的 PPT 任务优先走 OpenClaw 远程调研路径
+    - 保持“先分域，再给小工具集”的稳定策略继续成立
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`
+  - 类：`KeweiManus`
+  - 本阶段变化：
+    - 在 `systemPrompt` 中明确规定：
+      - 如果选择 `delegateResearchToOpenClaw`，就把这次远程委托视为一个原子级 todo 步骤
+      - 不要把远程调研内部再拆成本地伪步骤
+    - 在 `nextStepPrompt` 中明确要求：
+      - todo 只保留编排层任务，如“澄清目标 / 委托调研 / 汇总结果”
+  - 作用：
+    - 防止模型一边调用远程研究代理，一边又在本地 todo 里伪造“搜索、抓取、比价”等并不存在的内部步骤
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/OpenClawResearchToolTest.java`
+  - 类：`OpenClawResearchToolTest`
+  - 方法：
+    - `shouldReturnDelegatedResearchTextFromJsonPayload()`：验证可从 OpenClaw JSON 载荷中提取研究结果，并正确拼装命令参数
+    - `shouldReturnErrorWhenOpenClawCommandFails()`：验证命令失败时的错误兜底
+    - `shouldReturnErrorWhenTaskMissing()`：验证缺少任务描述时的参数校验
+  - 作用：
+    - 覆盖远程研究委托工具的核心输入输出行为
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/ShellOpenClawCommandRunnerTest.java`
+  - 类：`ShellOpenClawCommandRunnerTest`
+  - 方法：
+    - `shouldDrainLargeStdoutAndStderrWithoutBlocking()`：验证在大量 `stdout/stderr` 并发输出时不会阻塞
+  - 作用：
+    - 直接覆盖你这次最后一期最核心的难点：进程管线阻塞
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/ToolRegistrationTest.java`
+  - 类：`ToolRegistrationTest`
+  - 方法：
+    - `shouldUseRemoteResearchToolInDefaultToolSet()`：验证默认工具集包含 `delegateResearchToOpenClaw`，且不再包含本地 `searchWebsite` / `scrapeWebsite`
+  - 作用：
+    - 确认默认工具注册策略已经切换到远程调研委托
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/ManusSessionServiceTest.java`
+  - 类：`ManusSessionServiceTest`
+  - 新增/强化的方法：
+    - `shouldSelectRemoteResearchToolSubsetForResearchPrompt()`：验证研究类任务只拿到研究域工具集
+    - 其他已有测试同步更新，确认 `PPT / PDF / EMAIL` 任务域都与新的 `TodoWrite + OpenClaw` 策略兼容
+  - 作用：
+    - 保证任务分域和工具集筛选在最终阶段仍然稳定
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/KeweiManusPromptTest.java`
+  - 类：`KeweiManusPromptTest`
+  - 方法：
+    - `shouldTreatOpenClawDelegationAsAtomicTodoStep()`：验证 Prompt 已明确把远程研究委托当作原子任务处理
+  - 作用：
+    - 防止后续改 Prompt 时丢失这条关键约束
+
+- `docs/plans/2026-03-09-openclaw-research-delegation.md`
+  - 作用：
+    - 记录“把研究任务委托给 OpenClaw”的实现规划与测试拆解
+  - 价值：
+    - 让最后一期演进路径和设计意图有文档沉淀，而不是只体现在代码里
+
+### 踩坑记录
+
+#### 1. `stdin / stdout` 一开始没有并发处理，导致 pipeline 阻塞
+
+- 问题表现：
+  - 子进程表面上已经启动
+  - 但在输出较大内容时，整个命令链路会卡住
+  - 最终表现为 OpenClaw 委托执行看起来像“没有返回”
+
+- 根因：
+  - 进程的标准输出、标准错误本质上都是独立缓冲区
+  - 如果只串行读取、或者先等进程结束再读取，而不是并发消费这些输出流，就可能出现缓冲区写满
+  - 一旦缓冲区写满，子进程会阻塞，整条 pipeline 也就卡住了
+
+- 处理方式：
+  - 在 `ShellOpenClawCommandRunner` 里把 `stdout` 和 `stderr` 改成异步并发读取
+  - 通过 `CompletableFuture` 同时消费两个输出流
+  - 再配合超时控制和统一结果汇总，避免命令执行阶段因为管线读取顺序不当而卡死
+
+#### 2. 远程调研委托不应该在本地 todo 中被拆成伪内部步骤
+
+- 问题表现：
+  - 模型可能一边选择 `delegateResearchToOpenClaw`
+  - 一边又在本地 todo 里写出“先搜索网页、再抓取页面、再整理价格”这类实际上已经属于远程代理内部完成的步骤
+
+- 根因：
+  - Agent 缺少“编排层任务”和“远程执行层任务”之间的边界约束
+
+- 处理方式：
+  - 在 `KeweiManus` 的 prompt 中明确规定：
+    - OpenClaw 委托是一个原子级 todo 步骤
+    - 本地 todo 只描述编排层动作，例如澄清目标、委托调研、汇总结果
+
+### 本阶段结果
+
+- 默认研究路径已从本地搜索/抓取切换为 OpenClaw 远程调研委托
+- Manus 在研究类任务中已形成“TodoWrite 规划 -> OpenClaw 调研 -> 本地汇总”的分层执行方式
+- 进程执行层已解决 `stdin/stdout/stderr` 处理不当导致的管线阻塞问题
+- Prompt、工具注册、任务分域、命令执行和测试覆盖已经围绕最终架构完成统一
+
 ## 当前里程碑总结
 
 - 基础工程与运行环境已搭建完成
@@ -1875,12 +2281,27 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 - 已升级到 Spring AI `2.0.0-M2`，接入 Skills 模式与本地 PPT 文件生成能力
 - 已把 AskUserQuestion 改造成 Web 两段式提问/续跑链路，前端可以接收并提交 `question` 事件
 - 已对 Manus 做任务分域与工具子集筛选，降低大模型在全量 tools/skills 下的响应不稳定问题
+- 已接入 TodoWrite 任务规划能力，并通过适配层兼容社区工具与 Spring AI 当前参数绑定行为
+- 已支持在 Manus 执行过程中实时输出 todo 快照，前端可同步展示任务拆解与进度变化
+- 已完成 OpenClaw 远程调研委托能力接入，形成“本地编排 + 远程研究执行”的最终研究任务架构
 
-## 后续进度补充方式（约定）
+## 项目总结
 
-后续你在这个对话里继续发我“第 X 步完成了什么”，我会按同样格式补充：
-
-- 步骤目标
-- 主要新增/修改文件
-- 每个文件的类与方法职责
-- 阶段结果与下一步衔接
+- 这个项目已经从最初的 Spring Boot + Spring AI 入门工程，逐步演进成一个具备多模型接入、会话记忆、结构化输出、多模态、RAG、工具调用、MCP、Agent 编排、前端联调和远程研究委托能力的完整实践项目
+- 中间的关键演进路线比较清晰：
+  - 先完成模型与 `ChatClient` 基础能力
+  - 再补齐统一响应、异常处理、Advisor 和记忆体系
+  - 随后扩展多模态、RAG、PgVector、多数据源与条件装配
+  - 再进入 Tools、MCP、Agent、Skills、TodoWrite、AskUserQuestion 两段式交互
+  - 最后收束到 OpenClaw 远程调研委托与多进程稳定执行
+- 从架构角度看，最终形成了三层能力：
+  - 对话与业务封装层：`LoveApp`、Controller、前端页面
+  - Agent 编排层：`KeweiManus`、任务分域、TodoWrite、AskUserQuestion、SSE 事件
+  - 外部能力扩展层：RAG、MCP、文件工具、PPT 生成、OpenClaw 远程研究
+- 从工程经验上看，这个项目后期的几个核心难点也已经被逐步消化：
+  - 多模型 Bean 冲突与多数据源冲突
+  - Spring AI 版本升级带来的工具调用差异
+  - Web 场景下用户追问的暂停/续跑协议
+  - 社区工具与 Spring AI 参数绑定不兼容
+  - 多进程 `stdin/stdout/stderr` 管线阻塞
+- 最终结果不是单点功能堆叠，而是形成了一套可持续扩展的 AI Agent 实践骨架：既能做对话应用，也能做检索增强、工具编排、文件产出和远程研究委托
