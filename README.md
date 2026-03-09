@@ -21,7 +21,7 @@
 
 `Java` `Spring Boot` `Spring AI` `Maven` `MyBatis-Plus` `MySQL` `Redis` `PostgreSQL / pgvector` `Ollama` `DashScope` `Vue 3` `SSE` `MCP`
 
-## 功能地图
+## 功能图
 
 | 模块 | 当前能力 |
 | --- | --- |
