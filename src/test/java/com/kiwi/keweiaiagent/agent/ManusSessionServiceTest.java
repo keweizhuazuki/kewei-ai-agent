@@ -8,8 +8,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class ManusSessionServiceTest {
 
@@ -18,20 +16,18 @@ class ManusSessionServiceTest {
         ManusSessionService service = new ManusSessionService();
         ToolCallback ask = tool("AskUserQuestionTool");
         ToolCallback todo = tool("TodoWrite");
-        ToolCallback search = tool("searchWebsite");
-        ToolCallback scrape = tool("scrapeWebsite");
+        ToolCallback research = tool("delegateResearchToOpenClaw");
         ToolCallback ppt = tool("create_pptx");
         ToolCallback terminate = tool("doTerminate");
         ToolCallback email = tool("sendEmail");
-        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, todo, search, scrape, ppt, terminate, email});
+        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, todo, research, ppt, terminate, email});
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我做个ppt，内容是静安寺约会地点推荐。3页");
 
-        assertEquals(6, selected.length);
+        assertEquals(5, selected.length);
         assertTrue(contains(selected, "AskUserQuestionTool"));
         assertTrue(contains(selected, "TodoWrite"));
-        assertTrue(contains(selected, "searchWebsite"));
-        assertTrue(contains(selected, "scrapeWebsite"));
+        assertTrue(contains(selected, "delegateResearchToOpenClaw"));
         assertTrue(contains(selected, "create_pptx"));
         assertTrue(contains(selected, "doTerminate"));
     }
@@ -95,12 +91,33 @@ class ManusSessionServiceTest {
     }
 
     @Test
+    void shouldSelectRemoteResearchToolSubsetForResearchPrompt() {
+        ManusSessionService service = new ManusSessionService();
+        ToolCallback ask = tool("AskUserQuestionTool");
+        ToolCallback todo = tool("TodoWrite");
+        ToolCallback research = tool("delegateResearchToOpenClaw");
+        ToolCallback write = tool("writeFile");
+        ToolCallback terminate = tool("doTerminate");
+        ToolCallback[] all = new ToolCallback[]{ask, todo, research, write, terminate};
+        ReflectionTestUtils.setField(service, "allTools", all);
+
+        ToolCallback[] selected = service.selectToolsForPrompt("帮我调研最近 AI Agent 的趋势，并给出网页来源总结");
+
+        assertEquals(4, selected.length);
+        assertTrue(contains(selected, "AskUserQuestionTool"));
+        assertTrue(contains(selected, "TodoWrite"));
+        assertTrue(contains(selected, "delegateResearchToOpenClaw"));
+        assertTrue(contains(selected, "doTerminate"));
+    }
+
+    @Test
     void shouldRoutePromptToExpectedDomain() {
         ManusSessionService service = new ManusSessionService();
 
         assertSame(ManusSessionService.TaskDomain.PPT, service.routeTaskDomain("帮我做个PPT"));
         assertSame(ManusSessionService.TaskDomain.EMAIL, service.routeTaskDomain("帮我发一封邮件"));
         assertSame(ManusSessionService.TaskDomain.PDF, service.routeTaskDomain("帮我把PDF转成图片"));
+        assertSame(ManusSessionService.TaskDomain.RESEARCH, service.routeTaskDomain("帮我调研一下 AI Agent 最新进展"));
         assertSame(ManusSessionService.TaskDomain.GENERAL, service.routeTaskDomain("帮我想一个方案"));
     }
 
@@ -114,10 +131,21 @@ class ManusSessionServiceTest {
     }
 
     private static ToolCallback tool(String name) {
-        ToolCallback callback = mock(ToolCallback.class);
-        ToolDefinition definition = mock(ToolDefinition.class);
-        when(definition.name()).thenReturn(name);
-        when(callback.getToolDefinition()).thenReturn(definition);
-        return callback;
+        ToolDefinition definition = ToolDefinition.builder()
+                .name(name)
+                .description("")
+                .inputSchema("{}")
+                .build();
+        return new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return definition;
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return "";
+            }
+        };
     }
 }

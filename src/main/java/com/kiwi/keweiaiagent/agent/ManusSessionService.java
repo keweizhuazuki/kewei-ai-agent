@@ -22,6 +22,7 @@ public class ManusSessionService {
 
     enum TaskDomain {
         GENERAL,
+        RESEARCH,
         PPT,
         PDF,
         EMAIL
@@ -31,11 +32,16 @@ public class ManusSessionService {
 
     static {
         DOMAIN_TOOL_NAMES.put(TaskDomain.GENERAL, Set.of());
+        DOMAIN_TOOL_NAMES.put(TaskDomain.RESEARCH, Set.of(
+                "AskUserQuestionTool",
+                "TodoWrite",
+                "delegateResearchToOpenClaw",
+                "doTerminate"
+        ));
         DOMAIN_TOOL_NAMES.put(TaskDomain.PPT, Set.of(
                 "AskUserQuestionTool",
                 "TodoWrite",
-                "searchWebsite",
-                "scrapeWebsite",
+                "delegateResearchToOpenClaw",
                 "create_pptx",
                 "doTerminate"
         ));
@@ -119,6 +125,9 @@ public class ManusSessionService {
         String normalized = prompt.toLowerCase(Locale.ROOT);
         if (containsAny(normalized, "ppt", "幻灯片", "演示文稿")) {
             return TaskDomain.PPT;
+        }
+        if (containsAny(normalized, "research", "调研", "搜集资料", "网页来源", "资料收集", "研究一下")) {
+            return TaskDomain.RESEARCH;
         }
         if (containsAny(normalized, "pdf", "表单", "填写pdf", "填充pdf", "转换pdf", "convert pdf")) {
             return TaskDomain.PDF;

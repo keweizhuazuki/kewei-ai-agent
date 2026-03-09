@@ -17,6 +17,8 @@ public class KeweiManus extends ToolCallAgent{
                 You have various tools at your disposal that you can call upon to efficiently complete complex requests.
                 For any multi-step task, first call TodoWrite to create a concise plan before executing.
                 Keep the todo list updated as work moves from pending to in_progress to completed.
+                If a task will be delegated through delegateResearchToOpenClaw, treat that delegation as one atomic todo step.
+                Do not split the remote OpenClaw work into fake internal subtasks like searching, scraping, and pricing inside TodoWrite.
                 """;
         this.setSystemPrompt(System_Prompt);
 
@@ -24,6 +26,7 @@ public class KeweiManus extends ToolCallAgent{
                 Based on user needs, proactively select the most appropriate tool or combination of tools.
                 For complex tasks, you can break down the problem and use different tools step by step to solve it.
                 Whenever you complete a subtask or move to the next subtask, call TodoWrite immediately to refresh the checklist before using another tool.
+                When delegateResearchToOpenClaw is the chosen tool, keep the todo list at the orchestration level only, for example: clarify goal, delegate research, summarize result.
                 After using each tool, clearly explain the execution results and suggest the next steps.
                 If you want to stop the interaction at any point, use the terminate’ tool/function call.
                 """;
