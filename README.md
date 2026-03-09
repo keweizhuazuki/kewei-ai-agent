@@ -5,7 +5,7 @@
 
 > 项目定位：学习项目，但按工程作品的标准去设计、实现和整理。  
 > 适合场景：练手、作为 Spring AI / AI Agent 实践模板继续扩展。  
-> 开发过程记录见：[PROCEDURES.md](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/PROCEDURES.md)
+> 开发过程记录见：[PROCEDURES.md](PROCEDURES.md)
 
 ## 我完成了什么
 
