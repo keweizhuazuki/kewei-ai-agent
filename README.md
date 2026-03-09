@@ -53,6 +53,85 @@ flowchart LR
     AGENT --> OPENCLAW["OpenClaw Research Agent"]
 ```
 
+这套工程不是把所有 AI 能力都直接塞进 Controller，而是按“接口层 -> 应用编排层 -> Agent 层 -> 基础设施层 -> 外部能力层”拆开。这样做的目的很明确：让简单对话、RAG 问答、工具调用、多步任务执行都能复用同一套底层能力，同时又能在上层按场景自由组合。
+
+### 1. 接口层：负责暴露能力，不承担复杂编排
+
+- 前端通过聊天页、SSE 流式接口、图片上传接口进入后端。
+- [`src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/controller/AiController.java) 作为统一入口，负责接收请求、选择调用哪种应用能力，并把结果包装成普通响应或流式事件。
+- 这一层尽量薄，不直接处理 RAG、Tool 调用、会话记忆实现细节，也不直接持有复杂 Agent 状态。
+
+### 2. 应用编排层：把聊天、RAG、Tools、MCP 组织成可复用能力
+
+- [`src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java) 是项目里最核心的应用编排类，面向“单轮或多轮 AI 能力调用”这个层级。
+- 它负责把模型、Prompt、会话记忆、检索增强、工具、MCP 客户端这些能力按场景组合起来，对 Controller 暴露更稳定的调用接口。
+- [`src/main/java/com/kiwi/keweiaiagent/app/TodoDemoApp.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/app/TodoDemoApp.java) 则更偏向示例型应用，展示如何用相同底座承载特定任务流。
+
+可以把这一层理解成“面向业务场景的 AI Service”，它屏蔽了底层 Bean 装配、Provider 差异和能力拼接细节。
+
+### 3. Agent 层：负责多步决策、任务续跑和人机协作
+
+- 当请求不再是一次性问答，而是“需要拆步骤、调用多个工具、在中途向用户追问、根据结果继续执行”的复杂任务时，就进入 Agent 层。
+- [`src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java)、[`src/main/java/com/kiwi/keweiaiagent/agent/ToolCallAgent.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ToolCallAgent.java)、[`src/main/java/com/kiwi/keweiaiagent/agent/ReActAgent.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ReActAgent.java) 组成了多步执行能力的核心。
+- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java) 负责管理任务生命周期，包括启动任务、保存上下文、补充用户问题、继续执行。
+- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java) 负责把运行态数据落下来，例如 Todo 快照、待回答问题、Agent 状态等。
+
+这意味着项目里的 Agent 不是“调一次模型让它自己想”，而是带有明确状态管理和任务恢复机制的执行器。
+
+### 4. 基础设施层：提供模型、记忆、检索、异常和响应规范
+
+这一层不直接面向用户，但决定了整个项目能不能稳定扩展。
+
+- 模型接入：
+  [`src/main/java/com/kiwi/keweiaiagent/config/AiModelPrimaryConfig.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/config/AiModelPrimaryConfig.java) 负责多模型装配，统一 DashScope、Ollama 等 Provider 的主 Bean 选择。
+- 会话记忆：
+  [`src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java)、[`src/main/java/com/kiwi/keweiaiagent/chatmemory/FileBaseChatMemory.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/chatmemory/FileBaseChatMemory.java)、[`src/main/java/com/kiwi/keweiaiagent/chatmemory/MySqlChatMemory.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/chatmemory/MySqlChatMemory.java)、[`src/main/java/com/kiwi/keweiaiagent/chatmemory/MyRedisChatMemory.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/chatmemory/MyRedisChatMemory.java) 让 file / mysql / redis 三种记忆实现可以切换。
+- RAG：
+  [`src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java)、[`src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java)、[`src/main/java/com/kiwi/keweiaiagent/rag/LoveAppDocumentLoader.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/rag/LoveAppDocumentLoader.java)、[`src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java) 共同完成文档加载、向量写入、查询预处理、关键词增强和检索增强。
+- 接口规范与异常治理：
+  [`src/main/java/com/kiwi/keweiaiagent/common/BaseResponse.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/common/BaseResponse.java)、[`src/main/java/com/kiwi/keweiaiagent/config/GlobalResponseBodyAdvice.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/config/GlobalResponseBodyAdvice.java)、[`src/main/java/com/kiwi/keweiaiagent/exception/GlobalExceptionHandler.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/exception/GlobalExceptionHandler.java) 统一接口出参和错误处理。
+
+### 5. 外部能力层：Tools、MCP 与 Research Agent 作为可插拔扩展点
+
+- 本地工具由 [`src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java) 统一注册，再交给应用层或 Agent 层按需使用。
+- 工具能力覆盖文件操作、网页搜索、网页抓取、PDF 转图、邮件、PPT、时间查询、下载等。
+- [`src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java) 代表一种更强的“外部代理协作”方式，即把调研任务委派给 OpenClaw，再把结果回收进当前执行链路。
+- `kewei-image-search-mcp-server` 和 `kewei-image-generation-mcp-server` 把图片搜索、图片生成能力放到独立 MCP Server 中，而不是直接硬编码进主应用。
+
+这种设计的好处是：新增能力时，通常不需要改 Controller 或重写主流程，只需要新增 Tool、MCP Client 或一个更清晰的应用编排入口。
+
+### 6. 两条最典型的调用链
+
+#### 普通聊天 / RAG 问答链路
+
+1. 前端调用 [`AiController`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/controller/AiController.java)
+2. Controller 转给 [`LoveApp`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java)
+3. `LoveApp` 按配置挂载 ChatMemory、RAG Advisor、Tools 或 MCP Client
+4. 底层模型完成推理后返回普通结果或 SSE 流
+5. 响应包装层统一格式返回给前端
+
+这条链路强调的是“能力组合”，适合问答、知识检索、图片理解、流式输出这类相对确定的交互。
+
+#### Manus 多步任务链路
+
+1. 前端发起复杂任务或继续上一次任务
+2. [`ManusSessionService`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java) 创建或恢复会话
+3. [`KeweiManus`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java) 进入多步推理和 Tool Calling
+4. 执行过程中可能调用 TodoWrite、AskUserQuestion、Terminate、OpenClawResearchTool 等能力
+5. 中间状态写入 [`ManusSessionStore`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java)
+6. 若需要用户补充信息，则前端收到 `question` 事件后继续提交，任务从上次状态续跑
+
+这条链路强调的是“状态驱动的任务执行”，适合多步骤研究、资料收集、结果生成、需要人机协作补充上下文的任务。
+
+### 7. 为什么这个架构适合继续扩展
+
+- 如果要新增模型，优先改配置层和应用层装配，不必动现有业务入口。
+- 如果要新增知识库能力，主要扩展文档加载、向量写入和检索增强工厂。
+- 如果要新增工具，只要在 `tools` 下补实现并接入注册即可被应用层或 Agent 层复用。
+- 如果要新增一个领域 Agent，可以复用当前的会话管理、Todo、提问、终止机制，而不是从零再写一套执行框架。
+
+因此，这个项目的重点不是“模块很多”，而是这些模块之间的职责边界比较清楚，能支撑继续往生产级工程方向演进。
+
 ## 核心模块
 
 ### 1. 应用层
