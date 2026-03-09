@@ -10,10 +10,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 集中管理工具类的注册和实例化逻辑，提供一个统一的入口来获取各种工具实例。
+ * 工具注册配置类，负责集中装配并导出全部可用工具。
  */
 @Configuration
 public class ToolRegistration {
+    /**
+     * 注册 TodoWrite 社区工具，并在写入时同步待办快照。
+     */
     @Bean
     public TodoWriteTool todoWriteTool(ManusSessionStore manusSessionStore) {
         return TodoWriteTool.builder()
@@ -26,6 +29,9 @@ public class ToolRegistration {
                 .build();
     }
 
+    /**
+     * 汇总并导出系统内全部可用工具回调。
+     */
     @Bean
     public ToolCallback[] allTools(
             EmailTool emailTool,
