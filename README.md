@@ -1,22 +1,26 @@
 # kewei-ai-agent
+## author: Kewei
+这是一个基于 Spring Boot + Spring AI 的 AI Agent 学习与实践项目。
 
-这是一个基于 Spring Boot + Spring AI 的 AI Agent 学习/实践项目。  
-本 README 主要用于记录项目推进过程，方便后续回顾每一步做了什么、增加了哪些文件、核心类和方法分别负责什么。
+这份 README 不打算写成宣传文案，更像一份项目工作日志：
+- 记录这个项目是怎么一步步搭起来的
+- 说明关键目录、核心类和主要方法各自负责什么
+- 方便以后自己回头看，也方便别人快速接手
 
 说明：
-
-- 本文是根据当前仓库代码状态对前期步骤进行回填整理。
-- 不包含代码示例，重点记录实现思路、目录结构和阶段性成果。
+- 这份文档是根据当前仓库状态回填整理出来的
+- 不放大段代码，重点讲实现思路、结构变化和阶段成果
 
 ## 项目目标（当前阶段）
 
-- 搭建 Spring Boot 项目基础运行环境
-- 接入阿里百炼与 Ollama 的 `ChatModel`
-- 使用 `ChatClient` 封装业务对话能力（文本 / 多模态）
-- 统一接口响应格式与异常处理
-- 实现并串联自定义 Advisor（含链路共享状态）
+目前这个项目的目标，不是做一个“能回一句话”的聊天 demo，而是逐步搭出一套比较完整的 AI Agent 实践骨架。重点包括：
+
+- 用 Spring Boot 搭起基础运行环境
+- 接入阿里百炼和 Ollama 的 `ChatModel`
+- 用 `ChatClient` 封装文本、多模态等对话能力
+- 把接口响应、异常处理、Advisor 链这些基础设施先打稳
 - 支持结构化输出（JSON -> Java 对象）
-- 支持多种会话记忆存储方案（`file` / `mysql` / `redis`）并通过 yml 切换
+  支持多种会话记忆存储方案（`file` / `mysql` / `redis`）并通过 yml 切换
 - 支持基础 RAG（Markdown 文档加载、向量化、检索增强问答）
 - 为 `pgvector + RAG` 实操完成配置准备（含多数据源与 AI Bean 冲突处理）
 - 跑通 `pgvector + RAG` 检索链路（含 PgVector 数据源区分与测试验证）
@@ -2258,50 +2262,40 @@ cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 
 ## 当前里程碑总结
 
-- 基础工程与运行环境已搭建完成
-- 模型接入已覆盖阿里百炼与 Ollama 两种路径
-- `ChatClient` 已完成业务封装，并具备会话记忆能力
-- 接口层已具备统一响应与全局异常处理能力
-- Advisor 链已支持自定义增强与共享上下文
-- 已开始引入结构化输出思路，为后续业务编排和扩展做准备
-- 会话记忆已向本地持久化方向演进（文件存储）
-- 会话记忆已扩展到 MySQL 持久化，并支持配置化切换存储实现
-- 会话记忆已新增 Redis 实现，并形成 `file/mysql/redis` 三种可切换方案
-- 已支持图片输入的多模态对话能力（`doChatWithImage`）
-- 已具备基础 RAG 能力（文档读取、向量化入库、检索增强问答）
-- 已完成 `pgvector + RAG` 实操前的配置治理（AI Bean 优先级、多数据源拆分、条件化启用）
-- 已跑通 `pgvector + RAG` 检索与问答链路（含多数据源/JDBC 冲突处理与维度适配）
-- 已引入自定义 RAG 增强链路（查询预处理、状态过滤检索、关键词增强、增量入库）
-- 已完成工具调用能力接入（文件、搜索、抓取、下载、PDF 转图）并验证基础测试链路
-- 已扩展工具生态（邮件发送、时间查询）并完成注册方式升级（Bean 注入式）
-- 已接入 MCP 客户端与双图像 MCP 服务（搜索/生成），完成主应用联调与路径化结果返回
-- 已完成 Agent 化拓展（BaseAgent/ReAct/ToolCall/KeweiManus）并开放多种流式控制器接口
-- 已补齐图片上传与图片聊天处理链路，支持基于文件路径的图像对话与流式输出
-- 已新增独立前端工程 `kewei-ai-agent-frontend`，开始具备前后端协同开发基础
-- 已升级到 Spring AI `2.0.0-M2`，接入 Skills 模式与本地 PPT 文件生成能力
-- 已把 AskUserQuestion 改造成 Web 两段式提问/续跑链路，前端可以接收并提交 `question` 事件
-- 已对 Manus 做任务分域与工具子集筛选，降低大模型在全量 tools/skills 下的响应不稳定问题
-- 已接入 TodoWrite 任务规划能力，并通过适配层兼容社区工具与 Spring AI 当前参数绑定行为
-- 已支持在 Manus 执行过程中实时输出 todo 快照，前端可同步展示任务拆解与进度变化
-- 已完成 OpenClaw 远程调研委托能力接入，形成“本地编排 + 远程研究执行”的最终研究任务架构
+到现在为止，这个项目已经把下面这些关键能力串起来了：
+
+- 基础工程和运行环境已经稳定
+- 模型接入覆盖阿里百炼与 Ollama
+- `ChatClient` 已完成业务封装，并支持会话记忆
+- 接口层已经统一响应格式和异常处理
+- Advisor 链、自定义 RAG、PgVector、多数据源拆分都已经落地
+- 工具调用、MCP、Agent、多模态、TodoWrite、两段式提问都已经打通
+- OpenClaw 远程调研委托也已经接进主链路
+
+换句话说，它已经不再是一个“聊天 demo”，而是一套能继续往下长的 Agent 骨架。
 
 ## 项目总结
 
-- 这个项目已经从最初的 Spring Boot + Spring AI 入门工程，逐步演进成一个具备多模型接入、会话记忆、结构化输出、多模态、RAG、工具调用、MCP、Agent 编排、前端联调和远程研究委托能力的完整实践项目
-- 中间的关键演进路线比较清晰：
-  - 先完成模型与 `ChatClient` 基础能力
-  - 再补齐统一响应、异常处理、Advisor 和记忆体系
-  - 随后扩展多模态、RAG、PgVector、多数据源与条件装配
-  - 再进入 Tools、MCP、Agent、Skills、TodoWrite、AskUserQuestion 两段式交互
-  - 最后收束到 OpenClaw 远程调研委托与多进程稳定执行
-- 从架构角度看，最终形成了三层能力：
-  - 对话与业务封装层：`LoveApp`、Controller、前端页面
-  - Agent 编排层：`KeweiManus`、任务分域、TodoWrite、AskUserQuestion、SSE 事件
-  - 外部能力扩展层：RAG、MCP、文件工具、PPT 生成、OpenClaw 远程研究
-- 从工程经验上看，这个项目后期的几个核心难点也已经被逐步消化：
-  - 多模型 Bean 冲突与多数据源冲突
-  - Spring AI 版本升级带来的工具调用差异
-  - Web 场景下用户追问的暂停/续跑协议
-  - 社区工具与 Spring AI 参数绑定不兼容
-  - 多进程 `stdin/stdout/stderr` 管线阻塞
-- 最终结果不是单点功能堆叠，而是形成了一套可持续扩展的 AI Agent 实践骨架：既能做对话应用，也能做检索增强、工具编排、文件产出和远程研究委托
+这个项目是一步一步长出来的，不是先画了一张大蓝图再照着填空。
+
+前期先把最基本的模型调用、`ChatClient`、记忆和统一响应做好；
+中期开始补多模态、RAG、工具调用、MCP 和 Agent；
+后期再把 TodoWrite、AskUserQuestion 两段式交互、OpenClaw 委托调研这些更贴近真实使用场景的能力补齐。
+
+现在回头看，最有价值的不是“功能很多”，而是整个结构已经比较清楚：
+
+- 对话与业务封装层：`LoveApp`、Controller、前端页面
+- Agent 编排层：`KeweiManus`、任务分域、TodoWrite、AskUserQuestion、SSE 事件
+- 外部能力扩展层：RAG、MCP、文件工具、PPT 生成、OpenClaw 远程研究
+
+中间踩过的坑也比较典型：
+- 多模型 Bean 冲突
+- 多数据源冲突
+- Spring AI 版本升级后的工具调用差异
+- Web 场景下用户追问如何暂停和续跑
+- 社区工具与 Spring AI 参数绑定不兼容
+- 多进程 `stdin/stdout/stderr` 管线阻塞
+
+但好处是，这些坑现在基本都踩明白了。
+
+所以最终留下来的不是一堆零散功能，而是一套还算能打、也还能继续扩展的 AI Agent 实践工程，后续可以在这个基础上继续迭代更多能力，或者迁移到更正式的生产环境中去。
