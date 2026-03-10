@@ -210,6 +210,158 @@ kewei-ai-agent
 └── PROCEDURES.md
 ```
 
+## 部署步骤
+
+### 1. 准备运行环境
+
+- JDK 21
+- Maven 3.9+（或直接使用仓库自带 `./mvnw`）
+- Node.js 18+，npm 9+
+- PostgreSQL 15+，并安装 `pgvector`
+- MySQL 8.x（当 `app.chat-memory.type=mysql` 时需要）
+- Redis 7.x（当 `app.chat-memory.type=redis` 时需要）
+- Ollama（当使用本地模型 `ollama` profile 时需要）
+
+### 2. 修改配置
+
+默认配置文件在 [`src/main/resources/application.yml`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/resources/application.yml) 和 application-local.yml。
+
+因为安全性考虑，application-local.yml 中的敏感配置项没有提交到仓库，需要自行补充。
+模板如下
+```yml
+search-api:
+  api-key: "${SEARCH_API_KEY}"
+
+spring:
+  data:
+    redis:
+      host: "${REDIS_HOST:127.0.0.1}"
+      port: "${REDIS_PORT:6379}"
+
+  datasource:
+    url: "${POSTGRES_URL}"
+    username: "${POSTGRES_USERNAME}"
+    password: "${POSTGRES_PASSWORD}"
+    driver-class-name: org.postgresql.Driver
+
+  sql:
+    init:
+      mode: never
+
+  ai:
+    dashscope:
+      api-key: "${DASHSCOPE_API_KEY}"
+      chat:
+        options:
+          model: "qwen-plus"
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+
+app:
+  chat-memory:
+    # 可选值: file / mysql / redis
+    type: mysql
+    file-dir: "${CHAT_MEMORY_DIR:${user.dir}/tmp/chat-memory}"
+    redis:
+      key-prefix: "chat:memory:"
+  datasource:
+    mysql:
+      url: "${MYSQL_URL}"
+      username: "${MYSQL_USERNAME}"
+      password: "${MYSQL_PASSWORD}"
+      driver-class-name: com.mysql.cj.jdbc.Driver
+
+mail:
+  smtp:
+    host: "${MAIL_HOST}"
+    port: "${MAIL_PORT:465}"
+    username: "${MAIL_USERNAME}"
+    password: "${MAIL_PASSWORD}"
+    from: "${MAIL_FROM}"
+    ssl: true
+
+openclaw:
+  agent:
+    command: "${OPENCLAW_COMMAND}"
+    id: "main"
+    timeout-seconds: 120
+    session-prefix: "spring-ai-research"
+```
+
+主要看这几项：
+- `spring.ai.ollama.base-url`：Ollama 服务地址，默认 `http://localhost:11434`
+- `spring.datasource.*`：pgvector 使用的 PostgreSQL 连接
+- `app.datasource.mysql.*`：MySQL 会话记忆连接
+- `spring.data.redis.*`：Redis 连接
+- `spring.ai.dashscope.api-key`：DashScope Key
+- `mail.smtp.*`：邮件工具配置
+- `openclaw.agent.*`：研究代理命令路径
+
+### 3. 初始化依赖服务
+
+1. 创建 PostgreSQL 数据库
+2. 在 PostgreSQL 中安装 `vector` 扩展
+3. 如果使用 MySQL 会话记忆，创建数据库 `kewei_ai_agent`
+4. 如果使用 Redis 会话记忆，启动 Redis 实例
+5. 如果使用 Ollama，先拉取配置里对应模型
+
+```bash
+ollama pull qwen3.5:35b
+ollama pull mxbai-embed-large:latest
+```
+第二个命令用于下载 embedding 模型。
+
+如果需要本地 MCP 服务，再构建这两个子项目：
+
+```bash
+cd kewei-image-search-mcp-server
+./mvnw clean package -DskipTests
+cd ..
+
+cd kewei-image-generation-mcp-server
+./mvnw clean package -DskipTests
+cd ..
+```
+
+对应 jar 路径在 [`src/main/resources/mcp-servers.json`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/resources/mcp-servers.json) 里配置。
+
+### 4. 启动后端服务
+
+```bash
+./mvnw spring-boot:run
+```
+
+或者直接运行 jar：
+
+```bash
+java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar
+```
+
+- 服务地址：`http://localhost:8123/api`
+- Swagger：`http://localhost:8123/api/swagger-ui.html`
+
+### 5. 启动前端
+
+前端项目位于 [`kewei-ai-agent-frontend`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-ai-agent-frontend)，默认通过 `VITE_API_BASE_URL` 指向后端，未配置时使用 `http://localhost:8123/api`。
+
+```bash
+cd kewei-ai-agent-frontend
+npm install
+npm run dev
+```
+
+```bash
+cd kewei-ai-agent-frontend
+npm install
+npm run build
+```
+
+构建产物在 `kewei-ai-agent-frontend/dist`，可交给 Nginx 或任意静态资源服务托管。
+
 ## 后续可以继续扩展的方向
 
 - 增加任务观测面板，展示 Agent 每一步的思考、工具调用和状态变化
