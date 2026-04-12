@@ -16,8 +16,6 @@ spring:
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAsyncToolCallingManagerAutoConfiguration
 
 app:
-  long-term-memory:
-    dir: ${user.dir}/tmp/test-agent-memory
   chat-memory:
     type: file
     file-dir: ${user.dir}/tmp/test-chat-memory

@@ -66,7 +66,3 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
-
-app:
-  long-term-memory:
-    dir: ${user.dir}/tmp/agent-memory

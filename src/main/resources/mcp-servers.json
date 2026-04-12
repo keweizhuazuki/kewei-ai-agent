@@ -7,7 +7,7 @@
         "@amap/amap-maps-mcp-server"
       ],
       "env": {
-        "AMAP_MAPS_API_KEY": "fb7938111be4369f87bbf3993c175a8f"
+        "AMAP_MAPS_API_KEY": "REPLACE_WITH_YOUR_AMAP_MAPS_API_KEY"
       }
     },
     "kewei-image-search-mcp-server": {
