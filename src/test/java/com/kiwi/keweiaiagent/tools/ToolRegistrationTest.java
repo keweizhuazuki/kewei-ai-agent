@@ -26,6 +26,12 @@ class ToolRegistrationTest {
                 new PdfConvertTool(),
                 new ResourceDownloadTool(),
                 new TimeTool(),
+                new MemoryViewTool(java.nio.file.Path.of("tmp/test-memory-tools")),
+                new MemoryCreateTool(java.nio.file.Path.of("tmp/test-memory-tools")),
+                new MemoryStrReplaceTool(java.nio.file.Path.of("tmp/test-memory-tools")),
+                new MemoryInsertTool(java.nio.file.Path.of("tmp/test-memory-tools")),
+                new MemoryDeleteTool(java.nio.file.Path.of("tmp/test-memory-tools")),
+                new MemoryRenameTool(java.nio.file.Path.of("tmp/test-memory-tools")),
                 new OpenClawResearchTool(
                         new ObjectMapper(),
                         (command, timeout) -> new OpenClawCommandRunner.CommandResult(0, "{\"summary\":\"ok\"}", ""),
@@ -49,6 +55,12 @@ class ToolRegistrationTest {
                 .collect(Collectors.toSet());
 
         assertTrue(toolNames.contains("delegateResearchToOpenClaw"));
+        assertTrue(toolNames.contains("MemoryView"));
+        assertTrue(toolNames.contains("MemoryCreate"));
+        assertTrue(toolNames.contains("MemoryStrReplace"));
+        assertTrue(toolNames.contains("MemoryInsert"));
+        assertTrue(toolNames.contains("MemoryDelete"));
+        assertTrue(toolNames.contains("MemoryRename"));
         assertFalse(toolNames.contains("searchWebsite"));
         assertFalse(toolNames.contains("scrapeWebsite"));
     }

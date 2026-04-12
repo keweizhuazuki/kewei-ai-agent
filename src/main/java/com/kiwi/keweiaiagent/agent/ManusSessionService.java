@@ -1,5 +1,6 @@
 package com.kiwi.keweiaiagent.agent;
 
+import com.kiwi.keweiaiagent.app.LongTermMemoryPromptService;
 import com.kiwi.keweiaiagent.exception.BusinessException;
 import com.kiwi.keweiaiagent.exception.ErrorCode;
 import jakarta.annotation.Resource;
@@ -23,6 +24,15 @@ import java.util.Set;
 @Slf4j
 public class ManusSessionService {
 
+    private static final Set<String> MEMORY_TOOL_NAMES = Set.of(
+            "MemoryView",
+            "MemoryCreate",
+            "MemoryStrReplace",
+            "MemoryInsert",
+            "MemoryDelete",
+            "MemoryRename"
+    );
+
     /**
      * 任务领域枚举，描述 Manus 会话当前适配的工具集合类别。
      */
@@ -41,20 +51,20 @@ public class ManusSessionService {
 
     static {
         DOMAIN_TOOL_NAMES.put(TaskDomain.GENERAL, Set.of());
-        DOMAIN_TOOL_NAMES.put(TaskDomain.RESEARCH, Set.of(
+        DOMAIN_TOOL_NAMES.put(TaskDomain.RESEARCH, withMemoryTools(
                 "AskUserQuestionTool",
                 "TodoWrite",
                 "delegateResearchToOpenClaw",
                 "doTerminate"
         ));
-        DOMAIN_TOOL_NAMES.put(TaskDomain.PPT, Set.of(
+        DOMAIN_TOOL_NAMES.put(TaskDomain.PPT, withMemoryTools(
                 "AskUserQuestionTool",
                 "TodoWrite",
                 "delegateResearchToOpenClaw",
                 "create_pptx",
                 "doTerminate"
         ));
-        DOMAIN_TOOL_NAMES.put(TaskDomain.PDF, Set.of(
+        DOMAIN_TOOL_NAMES.put(TaskDomain.PDF, withMemoryTools(
                 "AskUserQuestionTool",
                 "TodoWrite",
                 "downloadResource",
@@ -63,7 +73,7 @@ public class ManusSessionService {
                 "pdfToImages",
                 "doTerminate"
         ));
-        DOMAIN_TOOL_NAMES.put(TaskDomain.EMAIL, Set.of(
+        DOMAIN_TOOL_NAMES.put(TaskDomain.EMAIL, withMemoryTools(
                 "AskUserQuestionTool",
                 "TodoWrite",
                 "readFile",
@@ -92,11 +102,17 @@ public class ManusSessionService {
     private ManusSessionStore manusSessionStore;
 
     /**
+     * 长期记忆系统提示词加载器。
+     */
+    @Resource
+    private LongTermMemoryPromptService longTermMemoryPromptService;
+
+    /**
      * 启动新的 Manus 流式会话。
      */
     public SseEmitter startChatStream(String chatId, String message) {
         ToolCallback[] selectedTools = selectToolsForPrompt(message);
-        KeweiManus manus = new KeweiManus(selectedTools, ollamaChatModel);
+        KeweiManus manus = new KeweiManus(selectedTools, ollamaChatModel, longTermMemoryPromptService.buildPrompt());
         manus.setSessionId(chatId);
         manus.setManusSessionStore(manusSessionStore);
         manusSessionStore.putSession(chatId, message, manus);
@@ -114,7 +130,7 @@ public class ManusSessionService {
         String followupPrompt = buildFollowupPrompt(session, answers);
 
         ToolCallback[] selectedTools = selectToolsForPrompt(session.initialPrompt());
-        KeweiManus manus = new KeweiManus(selectedTools, ollamaChatModel);
+        KeweiManus manus = new KeweiManus(selectedTools, ollamaChatModel, longTermMemoryPromptService.buildPrompt());
         manus.setSessionId(chatId);
         manus.setManusSessionStore(manusSessionStore);
         manusSessionStore.putSession(chatId, followupPrompt, manus);
@@ -169,6 +185,12 @@ public class ManusSessionService {
             }
         }
         return false;
+    }
+
+    private static Set<String> withMemoryTools(String... toolNames) {
+        LinkedHashSet<String> names = new LinkedHashSet<>(MEMORY_TOOL_NAMES);
+        names.addAll(Arrays.asList(toolNames));
+        return Set.copyOf(names);
     }
 
     /**

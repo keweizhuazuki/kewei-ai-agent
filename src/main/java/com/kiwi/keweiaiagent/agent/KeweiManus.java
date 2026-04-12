@@ -13,6 +13,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class KeweiManus extends ToolCallAgent{
     public KeweiManus(ToolCallback[] allTools, ChatModel ollamaChatModel) {
+        this(allTools, ollamaChatModel, "");
+    }
+
+    public KeweiManus(ToolCallback[] allTools, ChatModel ollamaChatModel, String longTermMemoryPrompt) {
         super(allTools);
         this.setName("KeweiManus");
         String System_Prompt = """
@@ -22,7 +26,9 @@ public class KeweiManus extends ToolCallAgent{
                 Keep the todo list updated as work moves from pending to in_progress to completed.
                 If a task will be delegated through delegateResearchToOpenClaw, treat that delegation as one atomic todo step.
                 Do not split the remote OpenClaw work into fake internal subtasks like searching, scraping, and pricing inside TodoWrite.
-                """;
+                                
+                For durable facts that should survive across sessions, use the long-term memory tools and keep MEMORY.md in sync.
+                """ + "\n\n" + longTermMemoryPrompt;
         this.setSystemPrompt(System_Prompt);
 
         String Next_Step_Prompt = """
@@ -30,6 +36,7 @@ public class KeweiManus extends ToolCallAgent{
                 For complex tasks, you can break down the problem and use different tools step by step to solve it.
                 Whenever you complete a subtask or move to the next subtask, call TodoWrite immediately to refresh the checklist before using another tool.
                 When delegateResearchToOpenClaw is the chosen tool, keep the todo list at the orchestration level only, for example: clarify goal, delegate research, summarize result.
+                Reuse long-term memory only for durable, cross-session facts, and avoid saving transient task noise.
                 After using each tool, clearly explain the execution results and suggest the next steps.
                 If you want to stop the interaction at any point, use the terminate’ tool/function call.
                 """;

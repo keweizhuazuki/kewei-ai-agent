@@ -34,6 +34,7 @@
 - 升级到 Spring AI `2.0.0-M2`，补齐 Skills 模式、AskUserQuestion 两段式交互、PPT 生成能力与 Manus 分域执行链路
 - 新增 TodoWrite 任务规划能力，支持独立 demo 与 Manus 执行中的 todo 进度输出
 - 增加 Spring AI 主控 + OpenClaw 调研执行代理协作链路，支持将网页调研任务委派给独立 Agent 返回结构化结果
+- 新增长期记忆层（memory tools），支持通过 `MEMORY.md` + typed markdown memory files 保存跨会话稳定事实
 
 ## 目录结构（当前）
 
@@ -42,7 +43,8 @@
 - `src/main/java/com/kiwi/keweiaiagent`
   - `KeweiAiAgentApplication`：Spring Boot 启动入口
 - `src/main/java/com/kiwi/keweiaiagent/app`
-  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、图片流式、RAG、Tools、MCP、记忆、Advisor 链）
+  - `LoveApp`：对话业务封装（文本对话、结构化输出、多模态、图片流式、RAG、Tools、MCP、短期会话记忆、长期记忆 prompt、Advisor 链）
+  - `LongTermMemoryPromptService`：加载长期记忆系统提示词，并注入当前 memory 根目录
 - `src/main/java/com/kiwi/keweiaiagent/advisor`
   - `MyLoggerAdvisor`：记录请求与响应日志
   - `ReReadingAdvisor`：对用户输入进行增强，并向 Advisor 链上下文写入原始输入
@@ -64,6 +66,7 @@
   - `AiModelPrimaryConfig`：指定默认 AI 模型/Embedding Bean 优先级（解决多 Provider 并存冲突）
   - `ChatMemoryConfig`：会话记忆实现装配与切换配置（file/mysql/redis）
   - `ChatMemoryMySqlDataSourceConfig`：ChatMemory 专用 MySQL 数据源与 MyBatis 配置
+  - `LongTermMemoryConfig`：初始化长期记忆目录与 `MEMORY.md` 索引文件
   - `JacksonCompatibilityConfig`：补充 `ObjectMapper` 配置，兼容新版 Jackson / Spring AI 的序列化与 SSE JSON 场景
   - `PgVectorPrimaryDataSourceConfig`：PgVector 使用的 PostgreSQL 主数据源与 `JdbcTemplate` 配置
   - `GlobalResponseBodyAdvice`：统一响应包装
@@ -89,9 +92,15 @@
   - `SpringAiAiInvoke`：Spring AI + DashScope 调用示例
   - `OllamaAiInvoke`：Spring AI + Ollama 调用示例
   - `DebugBeans`：调试 `ChatModel` Bean 注册情况
-  - `TestApiKey`：本地测试 API Key 占位（仅测试用）
 - `src/main/java/com/kiwi/keweiaiagent/tools`
   - `ToolRegistration`：统一注册工具回调
+  - `MemoryViewTool`：查看长期记忆目录或具体 memory 文件（带行号）
+  - `MemoryCreateTool`：创建新的 memory 文件
+  - `MemoryStrReplaceTool`：在 memory 文件中做精确唯一字符串替换
+  - `MemoryInsertTool`：在指定行后插入文本，常用于维护 `MEMORY.md`
+  - `MemoryDeleteTool`：删除 memory 文件或目录
+  - `MemoryRenameTool`：重命名或移动 memory 文件
+  - `MemoryToolSupport`：长期记忆工具共享的沙箱路径校验与文件操作支持类
   - `TodoWriteToolAdapter`：适配社区版 `TodoWriteTool` 与 Spring AI 当前参数绑定行为
   - `TerminateTool`：Agent 终止工具（用于多步任务结束信号）
   - `AskQuestionTool`：将控制台提问改造为 Web 可恢复的用户追问工具
@@ -111,6 +120,8 @@
 - `src/main/resources`
   - `application.yml`：应用、端口、Profile、AI 模型、pgvector 预配置与接口文档配置
   - `application-local.yml`：本地环境数据源/Redis/ChatMemory 等配置（含动态切换参数）
+  - `prompts/auto-memory-tools-system-prompt.md`：长期记忆系统提示词模板，约束模型如何读写 `MEMORY.md` 和 typed memory files
+  - 新增 `app.long-term-memory.dir` 配置：声明长期记忆目录根路径
   - 新增 `openclaw.agent.*` 配置：用于声明 OpenClaw CLI 命令、默认 agent、超时和研究会话前缀
   - `static/images`：多模态与工具调用相关图片资源（如 `test.png`、`couple.png`）
 - `src/test/java/com/kiwi/keweiaiagent`
@@ -166,6 +177,31 @@
 - 当前 PPT 与 research 类任务默认注入 `delegateResearchToOpenClaw`
 - 本地 `WebSearchTool` / `WebScrapingTool` 仍保留实现和测试，但不再作为默认调研主工具集
 
+## 长期记忆（Memory Tools，当前实现）
+
+- 这层能力参考 Spring 官方 2026-04-07 的 memory tools 设计，但没有直接升级到 `AutoMemoryToolsAdvisor`
+- 当前项目保留了相同的核心模型：
+  - `MEMORY.md` 作为长期记忆索引
+  - typed markdown memory files（如 `user_profile.md`、`project_notes.md`）
+  - 六个 purpose-named memory tools
+- 长期记忆和 `ChatMemory` 是两层不同能力：
+  - `ChatMemory`：保留当前会话窗口里的消息历史
+  - memory tools：只保存值得跨会话长期保留的稳定事实
+- 当前支持的六个 memory tools：
+  - `MemoryView`
+  - `MemoryCreate`
+  - `MemoryStrReplace`
+  - `MemoryInsert`
+  - `MemoryDelete`
+  - `MemoryRename`
+- 当前 memory tools 全部受 `app.long-term-memory.dir` 指定目录约束，默认写入 `tmp/agent-memory`
+- 启动时会自动初始化 memory 根目录，并创建默认索引文件 `MEMORY.md`
+- `LoveApp` 默认系统提示词已拼接长期记忆 prompt，并在普通对话、RAG、图片对话、MCP 对话中注入 memory tools
+- `KeweiManus` / `ManusSessionService` 已把 memory tools 作为各任务域的常驻工具，因此 research、PPT、PDF、email 等任务都可读写长期记忆
+- 建议模型新增长期事实时遵循两步：
+  - 先 `MemoryCreate` 创建具体 memory 文件
+  - 再 `MemoryInsert` 把索引追加到 `MEMORY.md`
+
 ## 进度记录
 
 ## 1. 初始化项目
@@ -220,11 +256,9 @@
     - `callWithMessage()`：使用阿里百炼 SDK 构造消息并发起调用
     - `main(String[] args)`：本地运行入口，用于直接测试 SDK 调用结果
   - 作用：验证“原生 SDK 调用”链路，便于对比 Spring AI 封装方式
-- `src/main/java/com/kiwi/keweiaiagent/demo/invoke/TestApiKey.java`
-  - 接口：`TestApiKey`
-  - 成员：
-    - `API_KEY`：测试用 Key 常量（本地调试使用）
-  - 作用：给 SDK 示例提供测试 Key 来源（后续建议改为环境变量）
+  - 当前说明补充：
+    - 不再依赖本地 `TestApiKey` 占位类
+    - 默认从 JVM 参数 `-Ddashscope.api-key=...` 或环境变量 `DASHSCOPE_API_KEY` 读取 API Key
 - `src/main/java/com/kiwi/keweiaiagent/demo/invoke/SpringAiAiInvoke.java`
   - 类：`SpringAiAiInvoke`（`dashscope` Profile）
   - 方法：

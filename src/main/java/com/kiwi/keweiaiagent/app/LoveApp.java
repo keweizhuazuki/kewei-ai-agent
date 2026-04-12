@@ -3,11 +3,6 @@ import com.kiwi.keweiaiagent.advisor.MyLoggerAdvisor;
 import com.kiwi.keweiaiagent.advisor.ReReadingAdvisor;
 import com.kiwi.keweiaiagent.query.QueryPreprocessor;
 import com.kiwi.keweiaiagent.rag.factory.loveapp.LoveAppRetrievalAugmentationAdvisorFactory;
-import com.kiwi.keweiaiagent.tools.FileOperationTool;
-import com.kiwi.keweiaiagent.tools.PdfConvertTool;
-import com.kiwi.keweiaiagent.tools.ResourceDownloadTool;
-import com.kiwi.keweiaiagent.tools.WebScrapingTool;
-import com.kiwi.keweiaiagent.tools.WebSearchTool;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springaicommunity.agent.tools.SkillsTool;
@@ -63,6 +58,10 @@ public class LoveApp {
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
     private final QueryPreprocessor queryPreprocessor;
+    /**
+     * 长期记忆工具集合，用于在普通对话中启用跨会话记忆。
+     */
+    private final ToolCallback[] memoryTools;
 
 
     private static final String SYSTEM_PROMPT = "扮演深耕恋爱心理领域的专家。开场向用户表明身份，告知用户可倾诉恋爱难题。" +
@@ -73,16 +72,19 @@ public class LoveApp {
     @Autowired
     public LoveApp(ChatModel ollamaChatModel,
                    ChatMemory chatMemory,
-                   QueryPreprocessor queryPreprocessor){
+                   QueryPreprocessor queryPreprocessor,
+                   LongTermMemoryPromptService longTermMemoryPromptService,
+                   @Qualifier("memoryTools") ToolCallback[] memoryTools){
 //        chatMemory = MessageWindowChatMemory.builder()
 //                .chatMemoryRepository(new InMemoryChatMemoryRepository())
 //                .maxMessages(10)
 //                .build();
         this.chatMemory = chatMemory;
         this.queryPreprocessor = queryPreprocessor;
+        this.memoryTools = memoryTools;
 
         chatClient = ChatClient.builder(ollamaChatModel)
-                .defaultSystem(SYSTEM_PROMPT)
+                .defaultSystem(SYSTEM_PROMPT + "\n\n" + longTermMemoryPromptService.buildPrompt())
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(this.chatMemory).build(),
                         new MyLoggerAdvisor(),
@@ -95,6 +97,7 @@ public class LoveApp {
         this.chatClient = chatClient;
         this.chatMemory = null;
         this.queryPreprocessor = null;
+        this.memoryTools = new ToolCallback[0];
     }
 
     /**
@@ -108,6 +111,7 @@ public class LoveApp {
                 .prompt()
                 .user(message)
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .call()
                 .chatResponse();
         assert chatResponse != null;
@@ -126,6 +130,7 @@ public class LoveApp {
                 .prompt()
                 .user(message)
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .stream()
                 .content();
     }
@@ -144,6 +149,7 @@ public class LoveApp {
                 .prompt()
                 .user(u -> u.text(message).media(mediaType, imageResource))
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .call()
                 .chatResponse();
         assert chatResponse != null;
@@ -159,6 +165,7 @@ public class LoveApp {
                 .prompt()
                 .user(u -> u.text(message).media(mediaType, imageResource))
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .stream()
                 .content();
     }
@@ -177,6 +184,7 @@ public class LoveApp {
                         .text("Generate 5 movies for {actor}. Return actor and movies.")
                         .param("actor", actor))
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .call()
                 .entity(ActorsFilms.class);
     }
@@ -194,6 +202,7 @@ public class LoveApp {
                 .system(SYSTEM_PROMPT + "每次对话后都要生成恋爱结果，标题为{用户名}的恋爱报告，内容为建议列表")
                 .user(message)
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .call()
                 .entity(LoveReport.class);
         assert loveReport != null;
@@ -216,6 +225,7 @@ public class LoveApp {
                 .prompt()
                 .user(rewrittenQuery.text())
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 // 应用 RAG 内存知识库问答
 //                .advisors(QuestionAnswerAdvisor.builder(loveAppVectorStore).build())
                 // 应用 rag 检索增强服务（基于 PgVector 向量存储）
@@ -275,6 +285,7 @@ public class LoveApp {
                 .prompt()
                 .user(message)
                 .advisors(a -> a.param(CONVERSATION_ID, chatId))
+                .toolCallbacks(memoryTools)
                 .toolCallbacks(toolCallbackProvider)
                 .call()
                 .chatResponse();

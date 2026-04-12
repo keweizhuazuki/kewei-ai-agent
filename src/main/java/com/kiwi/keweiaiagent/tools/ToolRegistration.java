@@ -15,6 +15,28 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ToolRegistration {
     /**
+     * 导出长期记忆专用工具集合，便于单独注入到聊天链路。
+     */
+    @Bean(name = "memoryTools")
+    public ToolCallback[] memoryTools(
+            MemoryViewTool memoryViewTool,
+            MemoryCreateTool memoryCreateTool,
+            MemoryStrReplaceTool memoryStrReplaceTool,
+            MemoryInsertTool memoryInsertTool,
+            MemoryDeleteTool memoryDeleteTool,
+            MemoryRenameTool memoryRenameTool
+    ) {
+        return ToolCallbacks.from(
+                memoryViewTool,
+                memoryCreateTool,
+                memoryStrReplaceTool,
+                memoryInsertTool,
+                memoryDeleteTool,
+                memoryRenameTool
+        );
+    }
+
+    /**
      * 注册 TodoWrite 社区工具，并在写入时同步待办快照。
      */
     @Bean
@@ -39,6 +61,12 @@ public class ToolRegistration {
             PdfConvertTool pdfConvertTool,
             ResourceDownloadTool resourceDownloadTool,
             TimeTool timeTool,
+            MemoryViewTool memoryViewTool,
+            MemoryCreateTool memoryCreateTool,
+            MemoryStrReplaceTool memoryStrReplaceTool,
+            MemoryInsertTool memoryInsertTool,
+            MemoryDeleteTool memoryDeleteTool,
+            MemoryRenameTool memoryRenameTool,
             OpenClawResearchTool openClawResearchTool,
             TerminateTool terminateTool,
             AskUserQuestionTool askUserQuestionTool,
@@ -51,6 +79,12 @@ public class ToolRegistration {
                 pdfConvertTool,
                 resourceDownloadTool,
                 timeTool,
+                memoryViewTool,
+                memoryCreateTool,
+                memoryStrReplaceTool,
+                memoryInsertTool,
+                memoryDeleteTool,
+                memoryRenameTool,
                 openClawResearchTool,
                 terminateTool,
                 askUserQuestionTool,

@@ -27,6 +27,18 @@ class KeweiManusPromptTest {
         assertTrue(manus.getNextStepPrompt().contains("orchestration level only"));
     }
 
+    @Test
+    void shouldIncludeLongTermMemoryPromptWhenProvided() {
+        KeweiManus manus = new KeweiManus(
+                new ToolCallback[0],
+                new NoOpChatModel(),
+                "Use MEMORY.md and MemoryView for durable facts."
+        );
+
+        assertTrue(manus.getSystemPrompt().contains("MEMORY.md"));
+        assertTrue(manus.getSystemPrompt().contains("durable facts"));
+    }
+
     private static final class NoOpChatModel implements ChatModel {
         @Override
         public ChatResponse call(Prompt prompt) {

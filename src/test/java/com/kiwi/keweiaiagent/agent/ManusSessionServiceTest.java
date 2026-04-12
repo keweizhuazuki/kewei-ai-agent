@@ -20,16 +20,18 @@ class ManusSessionServiceTest {
         ToolCallback ppt = tool("create_pptx");
         ToolCallback terminate = tool("doTerminate");
         ToolCallback email = tool("sendEmail");
-        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, todo, research, ppt, terminate, email});
+        ToolCallback[] memory = memoryTools();
+        ReflectionTestUtils.setField(service, "allTools", concat(new ToolCallback[]{ask, todo, research, ppt, terminate, email}, memory));
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我做个ppt，内容是静安寺约会地点推荐。3页");
 
-        assertEquals(5, selected.length);
+        assertEquals(11, selected.length);
         assertTrue(contains(selected, "AskUserQuestionTool"));
         assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "delegateResearchToOpenClaw"));
         assertTrue(contains(selected, "create_pptx"));
         assertTrue(contains(selected, "doTerminate"));
+        assertContainsAllMemoryTools(selected);
     }
 
     @Test
@@ -41,17 +43,18 @@ class ManusSessionServiceTest {
         ToolCallback file = tool("writeFile");
         ToolCallback search = tool("searchWebsite");
         ToolCallback terminate = tool("doTerminate");
-        ToolCallback[] all = new ToolCallback[]{ask, todo, email, file, search, terminate};
+        ToolCallback[] all = concat(new ToolCallback[]{ask, todo, email, file, search, terminate}, memoryTools());
         ReflectionTestUtils.setField(service, "allTools", all);
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我发一封邮件给客户");
 
-        assertEquals(5, selected.length);
+        assertEquals(11, selected.length);
         assertTrue(contains(selected, "AskUserQuestionTool"));
         assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "sendEmail"));
         assertTrue(contains(selected, "writeFile"));
         assertTrue(contains(selected, "doTerminate"));
+        assertContainsAllMemoryTools(selected);
     }
 
     @Test
@@ -65,15 +68,16 @@ class ManusSessionServiceTest {
         ToolCallback pdf = tool("pdfToImages");
         ToolCallback terminate = tool("doTerminate");
         ToolCallback search = tool("searchWebsite");
-        ReflectionTestUtils.setField(service, "allTools", new ToolCallback[]{ask, todo, download, read, write, pdf, terminate, search});
+        ReflectionTestUtils.setField(service, "allTools", concat(new ToolCallback[]{ask, todo, download, read, write, pdf, terminate, search}, memoryTools()));
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我把这个PDF转成图片");
 
-        assertEquals(7, selected.length);
+        assertEquals(13, selected.length);
         assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "downloadResource"));
         assertTrue(contains(selected, "pdfToImages"));
         assertTrue(contains(selected, "doTerminate"));
+        assertContainsAllMemoryTools(selected);
     }
 
     @Test
@@ -98,16 +102,17 @@ class ManusSessionServiceTest {
         ToolCallback research = tool("delegateResearchToOpenClaw");
         ToolCallback write = tool("writeFile");
         ToolCallback terminate = tool("doTerminate");
-        ToolCallback[] all = new ToolCallback[]{ask, todo, research, write, terminate};
+        ToolCallback[] all = concat(new ToolCallback[]{ask, todo, research, write, terminate}, memoryTools());
         ReflectionTestUtils.setField(service, "allTools", all);
 
         ToolCallback[] selected = service.selectToolsForPrompt("帮我调研最近 AI Agent 的趋势，并给出网页来源总结");
 
-        assertEquals(4, selected.length);
+        assertEquals(10, selected.length);
         assertTrue(contains(selected, "AskUserQuestionTool"));
         assertTrue(contains(selected, "TodoWrite"));
         assertTrue(contains(selected, "delegateResearchToOpenClaw"));
         assertTrue(contains(selected, "doTerminate"));
+        assertContainsAllMemoryTools(selected);
     }
 
     @Test
@@ -147,5 +152,32 @@ class ManusSessionServiceTest {
                 return "";
             }
         };
+    }
+
+    private static ToolCallback[] memoryTools() {
+        return new ToolCallback[]{
+                tool("MemoryView"),
+                tool("MemoryCreate"),
+                tool("MemoryStrReplace"),
+                tool("MemoryInsert"),
+                tool("MemoryDelete"),
+                tool("MemoryRename")
+        };
+    }
+
+    private static ToolCallback[] concat(ToolCallback[] first, ToolCallback[] second) {
+        ToolCallback[] result = new ToolCallback[first.length + second.length];
+        System.arraycopy(first, 0, result, 0, first.length);
+        System.arraycopy(second, 0, result, first.length, second.length);
+        return result;
+    }
+
+    private static void assertContainsAllMemoryTools(ToolCallback[] tools) {
+        assertTrue(contains(tools, "MemoryView"));
+        assertTrue(contains(tools, "MemoryCreate"));
+        assertTrue(contains(tools, "MemoryStrReplace"));
+        assertTrue(contains(tools, "MemoryInsert"));
+        assertTrue(contains(tools, "MemoryDelete"));
+        assertTrue(contains(tools, "MemoryRename"));
     }
 }
