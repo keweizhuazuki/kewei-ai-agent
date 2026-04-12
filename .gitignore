@@ -10,6 +10,7 @@ application-*.local.yaml
 *.keystore
 src/main/java/com/kiwi/keweiaiagent/demo/invoke/TestApiKey.java
 tmp
+docs/plans/
 src/main/resources/mcp-servers.json
 
 HELP.md

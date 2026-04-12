@@ -6,6 +6,7 @@
 > 项目定位：学习项目，但按工程作品的标准去设计、实现和整理。  
 > 适合场景：练手、作为 Spring AI / AI Agent 实践模板继续扩展。  
 > 开发过程记录见：[PROCEDURES.md](PROCEDURES.md)
+> 贡献流程见：[CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 我完成了什么
 
@@ -128,37 +129,37 @@ flowchart TB
 
 ### 1. 应用层
 
-- [`src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java)
+- [`src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`](src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java)
   统一封装文本对话、结构化输出、多模态、RAG、Tools、MCP、会话记忆等能力。
-- [`src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/controller/AiController.java)
+- [`src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`](src/main/java/com/kiwi/keweiaiagent/controller/AiController.java)
   暴露同步、流式、SSE、图片上传、Agent 相关接口。
 
 ### 2. Agent 与会话状态
 
-- [`src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java)
+- [`src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`](src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java)
   应用级多工具 Agent。
-- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java)
+- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java)
   管理任务启动、续跑、问题补充和工具子集选择。
-- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java)
+- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java`](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java)
   保存运行状态、中间问题和 Todo 快照。
 
 ### 3. RAG 与检索增强
 
-- [`src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java)
-- [`src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java)
-- [`src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java)
+- [`src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java`](src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java)
+- [`src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java`](src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java)
+- [`src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java`](src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java)
 
 这部分负责文档加载、向量写入、查询预处理和检索增强配置。
 
 ### 4. 工具与外部能力接入
 
-- [`src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java)
+- [`src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`](src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java)
   统一管理工具注册。
-- [`src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java)
+- [`src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java`](src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java)
   研究任务委派给 OpenClaw。
-- [`kewei-image-search-mcp-server`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-image-search-mcp-server)
+- [`kewei-image-search-mcp-server`](kewei-image-search-mcp-server)
   图片搜索 MCP 服务。
-- [`kewei-image-generation-mcp-server`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-image-generation-mcp-server)
+- [`kewei-image-generation-mcp-server`](kewei-image-generation-mcp-server)
   图片生成 MCP 服务。
 
 ## 工程亮点
@@ -224,7 +225,7 @@ kewei-ai-agent
 
 ### 2. 修改配置
 
-默认配置文件在 [`src/main/resources/application.yml`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/resources/application.yml) 和 application-local.yml。
+默认配置文件在 [`src/main/resources/application.yml`](src/main/resources/application.yml) 和本地私有的 `application-local.yml`。
 
 因为安全性考虑，application-local.yml 中的敏感配置项没有提交到仓库，需要自行补充。
 模板如下
@@ -301,6 +302,10 @@ openclaw:
 - `mail.smtp.*`：邮件工具配置
 - `openclaw.agent.*`：研究代理命令路径
 
+说明：
+- `src/main/resources/mcp-servers.json` 只保留可公开的示例配置
+- 其中的 `AMAP_MAPS_API_KEY` 是占位值，使用前请替换成你自己的 key 或改成私有本地配置
+
 ### 3. 初始化依赖服务
 
 1. 创建 PostgreSQL 数据库
@@ -327,7 +332,7 @@ cd kewei-image-generation-mcp-server
 cd ..
 ```
 
-对应 jar 路径在 [`src/main/resources/mcp-servers.json`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/src/main/resources/mcp-servers.json) 里配置。
+对应 jar 路径在 [`src/main/resources/mcp-servers.json`](src/main/resources/mcp-servers.json) 里配置。
 
 ### 4. 启动后端服务
 
@@ -346,7 +351,7 @@ java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar
 
 ### 5. 启动前端
 
-前端项目位于 [`kewei-ai-agent-frontend`](/Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-ai-agent-frontend)，默认通过 `VITE_API_BASE_URL` 指向后端，未配置时使用 `http://localhost:8123/api`。
+前端项目位于 [`kewei-ai-agent-frontend`](kewei-ai-agent-frontend)，默认通过 `VITE_API_BASE_URL` 指向后端，未配置时使用 `http://localhost:8123/api`。
 
 ```bash
 cd kewei-ai-agent-frontend
@@ -361,6 +366,12 @@ npm run build
 ```
 
 构建产物在 `kewei-ai-agent-frontend/dist`，可交给 Nginx 或任意静态资源服务托管。
+
+## 协作方式
+
+- 日常开发请不要直接 push 到 `main`
+- 推荐流程：`issue -> branch -> commit -> test -> PR -> review -> merge`
+- 详细约束见 [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 后续可以继续扩展的方向
 

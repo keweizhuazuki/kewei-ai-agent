@@ -1282,21 +1282,20 @@
 1. 启动图片生成 MCP 服务（SSE）
 
 ```bash
-cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-image-generation-mcp-server
+cd kewei-image-generation-mcp-server
 mvn spring-boot:run
 ```
 
 2. 启动图片搜索 MCP 服务（SSE）
 
 ```bash
-cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent/kewei-image-search-mcp-server
+cd kewei-image-search-mcp-server
 ./mvnw spring-boot:run
 ```
 
 3. 启动主应用
 
 ```bash
-cd /Users/zhukewei/Downloads/dev/codes/kewei-ai-agent
 ./mvnw spring-boot:run
 ```
 
