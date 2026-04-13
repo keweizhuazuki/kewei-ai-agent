@@ -2293,6 +2293,145 @@ cd kewei-image-search-mcp-server
 - 进程执行层已解决 `stdin/stdout/stderr` 处理不当导致的管线阻塞问题
 - Prompt、工具注册、任务分域、命令执行和测试覆盖已经围绕最终架构完成统一
 
+## 24. 接入长期记忆 Memory Tools，补齐跨会话稳定事实存取能力
+
+### 本阶段目标
+
+- 参考 Spring 官方 memory tools 设计，为项目补一层“跨会话长期记忆”能力
+- 在不升级到 Spring AI `2.0.0-M4+` 的前提下，于当前 `2.0.0-M2` 体系中实现兼容方案
+- 让 `LoveApp` 和 `KeweiManus` 都能通过受限工具读写长期记忆，而不是直接暴露全文件系统权限
+- 在 `PROCEDURES.md` 中补齐长期记忆的实现方式、边界和使用规则
+
+### 主要新增/修改文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryViewTool.java`
+  - 作用：
+    - 读取长期记忆文件并附带行号
+    - 或列出 memory 根目录及其两层内的内容
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryCreateTool.java`
+  - 作用：
+    - 在受限 memory 根目录内创建新的 memory 文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryStrReplaceTool.java`
+  - 作用：
+    - 在已有 memory 文件中做“精确且唯一”的字符串替换
+    - 适合修正和更新长期记忆中的单条事实
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryInsertTool.java`
+  - 作用：
+    - 在指定行后插入文本
+    - 主要用于维护 `MEMORY.md` 这种索引文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryDeleteTool.java`
+  - 作用：
+    - 删除长期记忆文件或目录
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryRenameTool.java`
+  - 作用：
+    - 重命名或移动长期记忆文件
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/MemoryToolSupport.java`
+  - 作用：
+    - 统一处理 memory 根目录解析、路径归一化、越界校验、文件读写与递归删除
+    - 这是本阶段“安全边界”的核心实现
+
+- `src/main/java/com/kiwi/keweiaiagent/config/LongTermMemoryConfig.java`
+  - 作用：
+    - 初始化长期记忆根目录
+    - 在启动时自动补齐默认索引文件 `MEMORY.md`
+    - 提供 `longTermMemoriesRootPath` Bean 给 memory tools 复用
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LongTermMemoryPromptService.java`
+  - 作用：
+    - 加载长期记忆系统提示词模板
+    - 在运行时注入当前 memory 根目录路径
+
+- `src/main/resources/prompts/auto-memory-tools-system-prompt.md`
+  - 作用：
+    - 约束模型如何使用长期记忆工具
+    - 明确 `MEMORY.md` 是索引文件
+    - 约束“先创建文件，再更新索引”的写入流程
+    - 明确哪些信息值得长期保存，哪些只是当前会话噪音
+
+- `src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`
+  - 本阶段变化：
+    - 新增 `memoryTools(...)`，导出长期记忆专用工具集合
+    - 把六个 `Memory*` 工具纳入默认 `allTools(...)`
+  - 作用：
+    - 让普通对话链路和 Agent 工具链路都能拿到长期记忆工具
+
+- `src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`
+  - 本阶段变化：
+    - 构造函数中注入 `LongTermMemoryPromptService`
+    - 注入 `memoryTools`
+    - 在普通聊天、图片聊天、RAG、结构化输出、MCP 调用等路径中统一挂上长期记忆工具
+  - 作用：
+    - 让 `LoveApp` 不只是具备短期 `ChatMemory`，也能在工具层使用跨会话长期记忆
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`
+  - 本阶段变化：
+    - system prompt 中增加长期记忆使用约束
+    - 明确 durable facts 应通过 memory tools 存取，并保持 `MEMORY.md` 一致
+  - 作用：
+    - 让 Manus 不只会任务规划和远程调研，也会积累稳定上下文
+
+- `src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`
+  - 本阶段变化：
+    - 各任务域工具子集加入长期记忆工具
+    - 构造 `KeweiManus` 时同步注入长期记忆 prompt
+  - 作用：
+    - 确保 research / PPT / PDF / email 等任务域都能读写长期记忆
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/MemoryToolsTest.java`
+  - 作用：
+    - 覆盖创建、查看、插入、替换、重命名、删除和路径越界保护
+
+- `src/test/java/com/kiwi/keweiaiagent/tools/ToolRegistrationTest.java`
+  - 作用：
+    - 验证默认工具集包含全部 `Memory*` 工具
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/ManusSessionServiceTest.java`
+  - 作用：
+    - 验证各任务域工具子集都带有长期记忆工具
+
+- `src/test/java/com/kiwi/keweiaiagent/agent/KeweiManusPromptTest.java`
+  - 作用：
+    - 验证 Manus prompt 已包含长期记忆使用约束
+
+- `src/test/java/com/kiwi/keweiaiagent/app/LongTermMemoryPromptServiceTest.java`
+  - 作用：
+    - 验证 memory prompt 模板能正确注入当前 memory 根目录
+
+### 设计取舍
+
+- 没有直接升级到官方 `AutoMemoryToolsAdvisor`
+  - 原因：
+    - 官方方案依赖更高版本的 Spring AI / spring-ai-agent-utils
+    - 当前项目仍停留在 `Spring AI 2.0.0-M2`
+    - 若直接升级，会把 TodoWrite、AskUserQuestion、MCP、Manus 工具链等一整套兼容面一起扩大
+  - 当前策略：
+    - 保留官方设计思想
+    - 在当前版本里本地实现一套兼容的长期记忆工具层
+
+- 没有复用社区版 `FileSystemTools`
+  - 原因：
+    - 当前版本下它仍是“更大范围的文件系统权限”
+    - 不适合直接暴露给默认 Agent 主路径
+  - 当前策略：
+    - 单独做受限 memory root 目录
+    - 所有 `Memory*` 工具只允许访问这一层沙箱目录
+
+### 本阶段结果
+
+- 项目现在同时具备两层记忆能力：
+  - `ChatMemory`：会话级短期消息记忆
+  - `Memory Tools`：跨会话长期稳定事实记忆
+- `LoveApp` 与 `KeweiManus` 都已打通长期记忆工具链路
+- `MEMORY.md + typed markdown memory files` 的结构已经在项目内落地
+- 长期记忆工具已完成基础测试覆盖，并具备路径沙箱保护
+- 项目主线能力从“会话内上下文 + 多步执行”进一步扩展到了“跨会话稳定上下文积累”
+
 ## 当前里程碑总结
 
 到现在为止，这个项目已经把下面这些关键能力串起来了：
@@ -2304,8 +2443,9 @@ cd kewei-image-search-mcp-server
 - Advisor 链、自定义 RAG、PgVector、多数据源拆分都已经落地
 - 工具调用、MCP、Agent、多模态、TodoWrite、两段式提问都已经打通
 - OpenClaw 远程调研委托也已经接进主链路
+- 长期记忆 Memory Tools 也已经补上，项目同时具备短期会话记忆和跨会话稳定事实记忆
 
-换句话说，它已经不再是一个“聊天 demo”，而是一套能继续往下长的 Agent 骨架。
+换句话说，它已经不再是一个“聊天 demo”，而是一套能继续往下长、并且具备状态积累能力的 Agent 骨架。
 
 ## 项目总结
 
@@ -2313,12 +2453,13 @@ cd kewei-image-search-mcp-server
 
 前期先把最基本的模型调用、`ChatClient`、记忆和统一响应做好；
 中期开始补多模态、RAG、工具调用、MCP 和 Agent；
-后期再把 TodoWrite、AskUserQuestion 两段式交互、OpenClaw 委托调研这些更贴近真实使用场景的能力补齐。
+后期再把 TodoWrite、AskUserQuestion 两段式交互、OpenClaw 委托调研、长期记忆工具这些更贴近真实使用场景的能力补齐。
 
 现在回头看，最有价值的不是“功能很多”，而是整个结构已经比较清楚：
 
 - 对话与业务封装层：`LoveApp`、Controller、前端页面
 - Agent 编排层：`KeweiManus`、任务分域、TodoWrite、AskUserQuestion、SSE 事件
+- 记忆与状态层：`ChatMemory`、长期记忆 Memory Tools、`ManusSessionStore`
 - 外部能力扩展层：RAG、MCP、文件工具、PPT 生成、OpenClaw 远程研究
 
 中间踩过的坑也比较典型：
@@ -2328,7 +2469,8 @@ cd kewei-image-search-mcp-server
 - Web 场景下用户追问如何暂停和续跑
 - 社区工具与 Spring AI 参数绑定不兼容
 - 多进程 `stdin/stdout/stderr` 管线阻塞
+- 在不升级主框架版本的前提下，如何兼容实现长期记忆工具层
 
 但好处是，这些坑现在基本都踩明白了。
 
-所以最终留下来的不是一堆零散功能，而是一套还算能打、也还能继续扩展的 AI Agent 实践工程，后续可以在这个基础上继续迭代更多能力，或者迁移到更正式的生产环境中去。
+所以最终留下来的不是一堆零散功能，而是一套还算能打、也还能继续扩展的 AI Agent 实践工程：它已经具备对话、工具、检索、Agent 编排、远程调研、短期记忆和长期记忆这些关键能力，后续可以继续往更正式的生产环境迁移，也可以作为 Spring AI / Agent 工程模板继续演进。
