@@ -323,14 +323,18 @@ PowerShell 的打包命令用 `.\mvnw.cmd package -DskipTests`，`java -jar` 相
 
 ### 平台说明
 
-新增 Windows/macOS CI 使用原生 Maven Wrapper，检查隔离的后端测试、默认打包及前端测试/构建（依赖安装使用 `npm ci --ignore-scripts`），记录运行版本并保留含跳过项的测试报告。首次托管结果仍待确认，不代表完整服务启动或这些系统上的浏览器已验证。
+提交 `4ed9c37` 的[托管运行 38035840523](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035840523)已通过全部五个任务。原生 Windows/PowerShell 与 macOS/Bash 任务已验证 Maven Wrapper、隔离后端测试、默认打包和前端测试/构建，依赖安装使用 `npm ci --ignore-scripts`。
 
-| 平台 | 运行方式与验证情况 |
+| 平台 | 已验证范围 |
 | --- | --- |
-| Linux | 本次已在 Linux 云环境验证选定后端单测、前端测试与构建；未验证完整外部服务联调 |
-| macOS | 使用 `./mvnw` 和 npm 命令；尚未进行 macOS 运行验证 |
-| Windows | 使用 PowerShell、`.\mvnw.cmd` 和 `curl.exe`；尚未进行 Windows 运行验证 |
-| 手机 / 平板 | 作为浏览器客户端访问已部署的前端；不在手机上运行 Java 后端或 Ollama |
+| Linux | 92 项选定后端测试全部通过，无跳过；前端测试/构建与模拟 Chromium 检查也已通过 |
+| Windows Server 2025 x64 | 92 项后端测试中 91 项通过、1 项跳过；默认打包、43 项 Node 测试与前端构建通过 |
+| macOS 26.6.2 ARM64 | 92 项后端测试中 91 项通过、1 项跳过；默认打包、43 项 Node 测试与前端构建通过 |
+| 手机 / 平板 | 仅验证 Chromium 移动尺寸视口，未进行手机实机验证 |
+
+两个原生任务均使用 Maven **3.9.12**、Temurin **21.0.12.1**、npm **11.19**；Windows 的 Node 为 **24.21.0**，macOS 为 **24.20.0**。各自跳过的 1 项均为需要区分大小写文件系统的 PDF 大小写冲突测试，报告保留跳过状态，不计为通过。
+
+上述结果验证的是列明的原生测试与构建，不代表 Windows/macOS 上完整应用启动、真实模型/数据库/MCP 联调或浏览器运行已验证。手机和平板仍作为浏览器客户端，不在设备上运行 Java 后端或 Ollama。
 
 局域网调试可用 `npm run dev -- --host 0.0.0.0` 暴露前端，并将 API 地址设置为后端机器的局域网地址。仅在可信网络下使用，检查设备互通和防火墙；不要将开发服务器直接开放到公网。
 
@@ -447,6 +451,7 @@ kewei-ai-agent/
 | 完成并展示首批桌面与移动视口前端真实截图 | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
 | 增加可选 ToolTape 录制/回放，修正 Agent 回调调度 | [#15](https://github.com/keweizhuazuki/kewei-ai-agent/pull/15) · `74a73ad` |
 | 修复 Manus 续跑状态、SSE 模式初始化与会话/应用切换，补充已验证的模拟浏览器流程 | [#16](https://github.com/keweizhuazuki/kewei-ai-agent/pull/16) · `4542019`, `d23f0ab` |
+| 验证 Windows/macOS 原生测试与构建，关闭记忆提示词输入流并修正测试路径 | [#17](https://github.com/keweizhuazuki/kewei-ai-agent/pull/17) · `990a962`, `4ed9c37` |
 
 **ToolTape 验证：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。相同后端/profile 范围也已通过[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505)。
 
@@ -454,9 +459,9 @@ kewei-ai-agent/
 
 **已验证的 CI 运行：** [运行 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)已通过 89 项核心后端测试、33 项前端测试、前端生产构建与桌面/移动视口截图。[工作流](.github/workflows/ci.yml)无需真实服务凭据，已检查的截图现已收录在上方。
 
-**本次跨平台修订：** [工作流](.github/workflows/ci.yml)新增只读的 Windows/PowerShell 与 macOS/Bash 兼容性检查。首次托管运行已通过 macOS 测试/构建，并发现 Windows 测试中写死 Unix 路径的断言。断言现已使用真实临时目录；同时修复提示词输入流在成功或失败后未关闭的问题，3 项针对性测试已在本地通过。扩展后的 92 项后端测试等待下一次跨平台运行；不区分大小写的文件系统可能跳过 PDF 大小写冲突测试。
+**跨平台验证：** 提交 `4ed9c37` 的[运行 38035840523](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035840523)已通过全部五个任务。Linux 的 92 项后端测试全部通过，无跳过；Windows 与 macOS 各有 91 项通过、1 项 PDF 大小写冲突测试明确跳过，默认打包、43 项 Node 测试与前端构建也全部通过。本次同时修复记忆提示词输入流在成功或失败后未关闭的问题，以 3 项针对性测试覆盖，并将写死 Unix 路径的断言改为真实临时路径。完整原生应用/服务启动与浏览器运行仍未验证。
 
-**验证边界：** 托管 Linux 环境已验证核心测试、前端构建、真实 Chromium 截图及 10 个模拟浏览器场景；真实模型会话、实际外部服务联调、更广泛的中断恢复、Windows/macOS 运行和手机实机验证仍未完成。
+**验证边界：** 托管 Linux 环境已验证核心测试、前端构建、真实 Chromium 截图及 10 个模拟浏览器场景；Windows/macOS 已验证上文列明的原生测试与默认构建。真实模型会话、实际外部服务联调、更广泛的中断恢复、Windows/macOS 完整应用启动及浏览器运行、手机实机验证仍未完成。
 
 ## 下一步升级
 
@@ -469,7 +474,7 @@ kewei-ai-agent/
 - [ ] **部署与在线演示：** 在已有部署说明上补充安全配置模板、最小后端启动路径与可选服务隔离；实际托管的在线演示仍待完成。
 - [ ] **CI 覆盖：** 随功能增长维护无需外部服务的测试清单；服务环境就绪后，再增加安全隔离的联调任务。
 - [ ] **真实会话截图：** 验证并截取模型对话、Manus 提问与 Todo 流程，与已完成的首页及合成响应聊天预览明确区分。
-- [ ] **跨平台验证：** 验证新增的 Windows/macOS 原生检查，再单独测试完整服务启动。
+- [ ] **跨平台服务兼容性：** 在 Windows/macOS 上配置模型、数据库与 MCP 后测试完整应用启动，再验证对应平台的浏览器行为。
 - [ ] **浏览器与服务覆盖：** 在已验证的模拟 Chromium 流程上扩展真实模型/服务联调，以及更广泛的导航、中断与恢复场景。
 - [ ] **ToolTape 隔离：** 在当前单一串行会话之外扩展前，增加会话级隔离与经过审查的逐工具捕获策略。
 - [ ] **会话持久化：** 明确待执行 Manus 任务的过期与持久化方案，支持安全重启恢复。

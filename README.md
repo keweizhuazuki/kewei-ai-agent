@@ -321,14 +321,18 @@ PowerShell uses `.\mvnw.cmd package -DskipTests`; the Java command is the same. 
 
 ### Platform coverage
 
-Windows and macOS CI jobs now exercise native Maven wrappers, the isolated backend tests, default packaging, and frontend tests/builds (dependency install uses `npm ci --ignore-scripts`). They log runtime versions and retain test reports, including skips. Initial hosted results are pending; this does not validate full service startup or browsers on those systems.
+[Hosted run 38035840523](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035840523) at `4ed9c37` passed all five jobs. Native Windows/PowerShell and macOS/Bash jobs verified Maven wrappers, isolated backend tests, default packaging and frontend tests/builds, using `npm ci --ignore-scripts` for dependencies.
 
-| Platform | Status |
+| Platform | Verified scope |
 | --- | --- |
-| Linux | Selected backend unit tests, frontend tests and build verified in a Linux cloud environment; no full external-service integration validation |
-| macOS | Use `./mvnw` and npm; runtime not yet verified |
-| Windows | Use PowerShell, `.\mvnw.cmd`, `curl.exe`; runtime not yet verified |
-| Mobile / tablet | Browser clients of a deployed frontend, not hosts for this Java backend or Ollama |
+| Linux | 92 selected backend tests passed, with no skips; frontend/build and mocked Chromium checks also passed |
+| Windows Server 2025 x64 | 92 backend tests: 91 passed, 1 skipped; default package, 43 Node tests and frontend build passed |
+| macOS 26.6.2 ARM64 | 92 backend tests: 91 passed, 1 skipped; default package, 43 Node tests and frontend build passed |
+| Mobile / tablet | Chromium mobile-sized viewports only; no physical-device verification |
+
+Both native jobs used Maven **3.9.12**, Temurin **21.0.12.1** and npm **11.19**; Node was **24.21.0** on Windows and **24.20.0** on macOS. The single skip in each native job is the PDF case-collision test, which requires a case-sensitive filesystem. Reports retain the skips rather than counting them as passes.
+
+This verifies the stated native tests and builds, not full application startup, live model/database/MCP integration or browser execution on Windows/macOS. Phones and tablets remain browser clients, not hosts for the Java backend or Ollama.
 
 For trusted-LAN testing only, use `npm run dev -- --host 0.0.0.0`, configure a reachable LAN backend URL and check firewall rules. Do not expose the development server directly to the internet.
 
@@ -445,6 +449,7 @@ Implemented changes are linked to their PRs and commits; pending hosted validati
 | Add inspected desktop and mobile-viewport frontend previews to this guide | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
 | Add opt-in ToolTape recording/replay and correct Agent callback dispatch | [#15](https://github.com/keweizhuazuki/kewei-ai-agent/pull/15) · `74a73ad` |
 | Fix Manus continuation state, SSE-mode initialization and chat/app switching; add verified mocked browser flows | [#16](https://github.com/keweizhuazuki/kewei-ai-agent/pull/16) · `4542019`, `d23f0ab` |
+| Verify native Windows/macOS tests and builds; close memory-prompt streams and use portable test paths | [#17](https://github.com/keweizhuazuki/kewei-ai-agent/pull/17) · `990a962`, `4ed9c37` |
 
 **ToolTape validation:** Added the opt-in ToolTape adapter and corrected `ToolCallAgent` dispatch to pass the available callbacks to Spring AI. Local Linux checks passed **90 default-build regression tests** and **22 profile-enabled tests plus packaging**, using pinned ToolTape revision `7d08b44`. A clean default build contains no ToolTape core or adapter classes. The [synthetic Agent regression](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java) exercises `think → act` with a deterministic local model stub and verifies replay causes no second tool side effect. The same backend/profile scope also passed in [hosted CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505).
 
@@ -452,9 +457,9 @@ Implemented changes are linked to their PRs and commits; pending hosted validati
 
 **Verified CI run:** [Run 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) passed 89 focused backend tests, 33 frontend tests, the production frontend build and desktop/mobile-viewport screenshot capture. The [workflow](.github/workflows/ci.yml) needs no live-service credentials. The inspected screenshots are now included above.
 
-**Current platform revision:** Added read-only Windows/PowerShell and macOS/Bash compatibility jobs to the [workflow](.github/workflows/ci.yml). The first hosted run passed macOS tests/builds and exposed a Unix-only test assertion on Windows. The assertion now uses a real temporary path; prompt streams are also closed on success or failure, with 3 focused tests passing locally. The expanded 92-test backend selection awaits the next platform run. The PDF case-collision test may skip on case-insensitive filesystems.
+**Cross-platform validation:** [Run 38035840523](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035840523) at `4ed9c37` passed all five jobs. Linux passed 92 backend tests without skips; Windows and macOS each passed 91 of 92, with one explicitly reported PDF case-collision skip, plus default packaging, 43 Node tests and the frontend build. The update also closes memory-prompt streams on success or failure, covered by 3 focused tests, and replaces a Unix-only path assertion with a real temporary path. Full native application/service startup and browser execution remain untested.
 
-**Verification boundary:** Hosted Linux checks cover focused tests, frontend builds, real Chromium captures and 10 mocked browser scenarios. Live model conversations, real external-service integration, broader interruption/recovery coverage, Windows / macOS runtime and physical mobile-device testing remain unverified.
+**Verification boundary:** Hosted Linux checks cover focused tests, frontend builds, real Chromium captures and 10 mocked browser scenarios; native Windows/macOS checks cover the focused tests and default builds described above. Live model conversations, real external-service integration, broader interruption/recovery coverage, full Windows/macOS application startup and browser testing, and physical mobile-device testing remain unverified.
 
 ## Next upgrades
 
@@ -467,7 +472,7 @@ These are pending plans, including the original roadmap. Bug fixes above do not 
 - [ ] **Deployment toward an online demo:** Continue from the improved setup guide with safe configuration templates, a minimal backend startup path and optional-service isolation. A hosted live demo is still pending.
 - [ ] **CI coverage:** Keep the self-contained test selection current as features grow; add safely isolated integration jobs only when their service setup is available.
 - [ ] **Live conversation screenshots:** Capture verified model-backed chat and Manus question/Todo flows, clearly separated from the completed landing-page and synthetic-response chat previews.
-- [ ] **Cross-platform validation:** Verify the newly configured native Windows/macOS checks, then test full service startup separately.
+- [ ] **Cross-platform service compatibility:** Test full application startup with configured models, databases and MCP on Windows/macOS, then validate browser behavior on those platforms.
 - [ ] **Browser and service coverage:** Extend the verified mocked Chromium flows to real model/service integration and broader navigation, interruption and recovery cases.
 - [ ] **ToolTape isolation:** Add per-session separation and reviewed per-tool capture policies before expanding beyond the current single serial session.
 - [ ] **Session durability:** Define expiration and persistence for pending Manus tasks, including safe restart recovery.
