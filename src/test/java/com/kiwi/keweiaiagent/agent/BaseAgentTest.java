@@ -13,6 +13,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class BaseAgentTest {
 
@@ -104,6 +107,45 @@ class BaseAgentTest {
 
         assertEquals(2, payload.todo().items().size());
         assertEquals("build", payload.todo().items().get(1).id());
+    }
+
+    @Test
+    void runShouldNotReportLimitWhenLastAllowedStepFinishesSuccessfully() {
+        BaseAgent agent = new TestAgent();
+        agent.setMaxSteps(1);
+
+        assertEquals("Step 1 result: ok", agent.run("hello"));
+        assertEquals(AgentState.FINISHED, agent.getState());
+    }
+
+    @Test
+    void runShouldMarkUnexpectedFailureAndCleanUpSession() {
+        IllegalStateException failure = new IllegalStateException("unexpected failure");
+        BaseAgent agent = new BaseAgent() {
+            @Override
+            public String step() { throw failure; }
+        };
+        ManusSessionStore store = new ManusSessionStore();
+        store.putSession("failed", "hello", null);
+        agent.setManusSessionStore(store);
+        agent.setSessionId("failed");
+
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> agent.run("hello")));
+        assertEquals(AgentState.ERROR, agent.getState());
+        assertNull(store.getSession("failed"));
+    }
+
+    @Test
+    void runShouldPreserveSessionWhileWaitingForUserInput() {
+        BaseAgent agent = new WaitingAgent();
+        ManusSessionStore store = new ManusSessionStore();
+        store.putSession("waiting", "hello", null);
+        agent.setManusSessionStore(store);
+        agent.setSessionId("waiting");
+
+        assertThrows(PendingUserQuestionException.class, () -> agent.run("hello"));
+        assertEquals(AgentState.WAITING_FOR_USER_INPUT, agent.getState());
+        assertNotNull(store.getSession("waiting"));
     }
 
     private static class TestAgent extends BaseAgent {

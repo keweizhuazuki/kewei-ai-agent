@@ -102,18 +102,26 @@ public abstract class BaseAgent {
                 results.add(result);
             }
             // 如果达到最大步数，设置状态为完成
-            if(currentStep >= maxSteps){
+            if(currentStep >= maxSteps && state != AgentState.FINISHED){
                 state = AgentState.FINISHED;
                 results.add(String.format("Agent {} reached max steps", name));
             }
+        } catch (PendingUserQuestionException e) {
+            state = AgentState.WAITING_FOR_USER_INPUT;
+            throw e;
         } catch (BusinessException e) {
             // 捕获异常并设置状态为错误
             state = AgentState.ERROR;
             log.error(e.getMessage());
             return String.format("Agent %s error: %s", name, e.getMessage());
+        } catch (RuntimeException e) {
+            state = AgentState.ERROR;
+            throw e;
         } finally {
             // 清理资源
-            cleanup();
+            if (state != AgentState.WAITING_FOR_USER_INPUT) {
+                cleanup();
+            }
         }
 
         // 返回所有步骤的结果
