@@ -270,6 +270,17 @@ npm run build
 
 A full `./mvnw test` also includes application-context tests requiring real models, databases, MCP or network access. Focused passes are not a full-suite pass. PDF tests generate temporary samples and cover subdirectories and collisions; the manual email test is disabled. Browser flows and real service calls need separate integration validation.
 
+The [regression workflow](.github/workflows/ci.yml) runs on pull requests and pushes to `main`: Java 21 executes 19 self-contained backend test classes, and Node 24 runs frontend tests plus a production build. Official actions are pinned to commit SHAs, repository permission is read-only, and application secrets are not used. Real model, database, SMTP and public-web integration tests are excluded.
+
+The frontend job also captures actual desktop/mobile viewport previews with Playwright and uploads a `ui-previews` artifact. These previews start only the built UI, not a backend or model. To capture the same views locally after building:
+
+```bash
+npx playwright install chromium
+npm run screenshots
+```
+
+Run these commands in `kewei-ai-agent-frontend`; use a supported browser environment. Capture files are written to `docs/images/` and must be visually reviewed before they are added to documentation.
+
 ## Architecture
 
 ```mermaid
@@ -337,8 +348,9 @@ These completed changes are backed by merged PRs and commits. This is a maintena
 | Preserve PDF subdirectories and detect same-run image-name collisions | [#9](https://github.com/keweizhuazuki/kewei-ai-agent/pull/9) · `d78ed7a` |
 | Support relative SSE API URLs for same-origin reverse proxies | [#10](https://github.com/keweizhuazuki/kewei-ai-agent/pull/10) · `6006c36` |
 | Add practical setup, usage, deployment and platform guidance | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
+| Split English and Chinese guides with synchronized upgrade plans | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
 
-**This documentation revision:** English is the default README, with a linked Simplified Chinese version. Both include the same completed-upgrade log and next-upgrade roadmap.
+**This CI revision:** Added [deterministic regression jobs and real UI capture](.github/workflows/ci.yml), without service credentials. The matching local scope passed 89 backend tests, 33 frontend tests and a production build; hosted results and screenshot artifacts are available in [GitHub Actions](https://github.com/keweizhuazuki/kewei-ai-agent/actions/workflows/ci.yml).
 
 **Verification boundary:** Linux checks cover focused backend tests, frontend tests and builds. Full external-service integration, Windows / macOS runtime validation and real UI screenshots remain outstanding.
 
@@ -351,7 +363,7 @@ These are pending plans, including the original roadmap. Bug fixes above do not 
 - [ ] **Production safeguards:** Add authentication, tool-level authorization, input validation, rate limits, audit logs and restrictive CORS.
 - [ ] **Domain-specific agents and MCP:** Split suitable task domains into independent agents or MCP services.
 - [ ] **Deployment toward an online demo:** Continue from the improved setup guide with safe configuration templates, a minimal backend startup path and optional-service isolation. A hosted live demo is still pending.
-- [ ] **CI regression checks:** Automate frontend tests/build and a clearly scoped backend suite, then record the actual first run. CI is not claimed complete in this revision.
+- [ ] **CI coverage:** Keep the self-contained test selection current as features grow; add safely isolated integration jobs only when their service setup is available.
 - [ ] **Real screenshots:** Capture desktop and mobile views from the actual app; label UI-only previews separately from live model sessions.
 - [ ] **Cross-platform validation:** Run the documented commands on Windows and macOS, recording versions and failures.
 - [ ] **Integration and browser tests:** Exercise model chat, question/continue, Todo progress, interruptions and retries against configured services.

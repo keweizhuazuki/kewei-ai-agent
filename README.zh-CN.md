@@ -272,6 +272,17 @@ npm run build
 
 仓库也包含 `./mvnw test` 全量测试，但部分 `@SpringBootTest` 会启动应用并依赖真实模型、数据库、MCP 或网络；不能把以上核心测试通过等同于全量测试通过。PDF 转图测试会临时生成样本，验证子目录保留与同名冲突处理，不需要私人 PDF；邮件手工测试默认禁用。浏览器交互、真实模型回答及外部服务应另做联调验证。
 
+[回归检查工作流](.github/workflows/ci.yml)会在 PR 和 `main` 推送时运行：Java 21 执行 19 个无需外部服务的后端测试类，Node 24 运行前端测试与生产构建。官方 Actions 固定到提交 SHA，仅授予仓库只读权限，不使用应用密钥；真实模型、数据库、SMTP 和公网服务联调测试不在此范围内。
+
+前端任务还会用 Playwright 截取实际桌面/移动视口，并上传 `ui-previews` 产物。预览只启动构建后的界面，不启动后端或模型。构建后可在本地执行相同截图：
+
+```bash
+npx playwright install chromium
+npm run screenshots
+```
+
+在 `kewei-ai-agent-frontend` 内执行，并使用支持浏览器运行的环境。图片输出到 `docs/images/`，经实际查看确认后再放入文档。
+
 ## 架构与代码导航
 
 ```mermaid
@@ -339,8 +350,9 @@ kewei-ai-agent/
 | 保留 PDF 子目录，检测同次转换的图片名称冲突 | [#9](https://github.com/keweizhuazuki/kewei-ai-agent/pull/9) · `d78ed7a` |
 | 支持同源反向代理下的相对 SSE API 地址 | [#10](https://github.com/keweizhuazuki/kewei-ai-agent/pull/10) · `6006c36` |
 | 补充实用启动、使用、部署与多平台说明 | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
+| 拆分英文默认页与中文入口，同步升级计划 | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
 
-**本次文档修订：** 默认 README 使用英文，并提供独立简体中文入口；两个版本同步维护已完成升级与下一步路线图。
+**本次 CI 升级：** 新增[确定性回归检查与真实界面截图流程](.github/workflows/ci.yml)，不需要服务凭据。对应本地范围已通过 89 项后端测试、33 项前端测试及生产构建；托管结果和截图产物以 [GitHub Actions](https://github.com/keweizhuazuki/kewei-ai-agent/actions/workflows/ci.yml) 为准。
 
 **验证边界：** Linux 已验证核心后端测试、前端测试与构建；完整外部服务联调、Windows/macOS 运行验证和真实界面截图仍未完成。
 
@@ -353,7 +365,7 @@ kewei-ai-agent/
 - [ ] **生产环境防护：** 补充鉴权、工具授权、输入校验、限流、审计日志与 CORS 限制。
 - [ ] **领域独立 Agent 与 MCP：** 按适合的任务域继续拆分独立 Agent 或 MCP 服务。
 - [ ] **部署与在线演示：** 在已有部署说明上补充安全配置模板、最小后端启动路径与可选服务隔离；实际托管的在线演示仍待完成。
-- [ ] **CI 回归检查：** 自动运行前端测试、构建与明确范围的后端测试，并记录真实首轮结果；本次修订不宣称 CI 已完成。
+- [ ] **CI 覆盖：** 随功能增长维护无需外部服务的测试清单；服务环境就绪后，再增加安全隔离的联调任务。
 - [ ] **真实截图：** 从实际应用截取桌面与移动界面，明确区分纯界面预览和真实模型会话。
 - [ ] **跨平台验证：** 在 Windows、macOS 实测文档命令，记录环境版本与失败项。
 - [ ] **联调与浏览器测试：** 覆盖真实聊天、提问续跑、Todo 进度、中断与重试。
