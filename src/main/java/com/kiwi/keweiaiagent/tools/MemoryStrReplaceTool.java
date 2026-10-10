@@ -23,7 +23,7 @@ public class MemoryStrReplaceTool {
     @Tool(name = "MemoryStrReplace", description = "Replace an exact and unique string inside an existing memory file", returnDirect = false)
     public String memoryStrReplace(
             @ToolParam(description = "Relative path of the memory file to update") String relativePath,
-            @ToolParam(description = "Exact string to replace. It must appear exactly once.") String oldText,
+            @ToolParam(description = "Non-empty exact string to replace. It must appear exactly once.") String oldText,
             @ToolParam(description = "Replacement text") String newText
     ) {
         try {

@@ -3,11 +3,16 @@ package com.kiwi.keweiaiagent.tools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MemoryToolsTest {
@@ -100,5 +105,54 @@ class MemoryToolsTest {
         assertTrue(viewResult.contains("outside memory root"));
         assertTrue(renameResult.contains("outside memory root"));
         assertTrue(deleteResult.contains("outside memory root"));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void shouldRejectEmptyReplacementTargetWithoutHangingOrChangingFile(String oldText) throws Exception {
+        Path file = tempDir.resolve("profile.md");
+        Files.writeString(file, "The user prefers concise answers.\n");
+        String original = Files.readString(file);
+
+        String result = assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> memoryStrReplaceTool.memoryStrReplace("profile.md", oldText, "replacement"));
+
+        assertEquals("Error replacing memory text: target text must not be null or empty", result);
+        assertEquals(original, Files.readString(file));
+    }
+
+    @Test
+    void shouldRejectEmptyReplacementTargetInEmptyFile() throws Exception {
+        Path file = tempDir.resolve("empty.md");
+        Files.writeString(file, "");
+
+        String result = assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> memoryStrReplaceTool.memoryStrReplace("empty.md", "", "replacement"));
+
+        assertEquals("Error replacing memory text: target text must not be null or empty", result);
+        assertEquals("", Files.readString(file));
+    }
+
+    @Test
+    void shouldAllowUniqueWhitespaceReplacementAndEmptyReplacementText() throws Exception {
+        Path file = tempDir.resolve("profile.md");
+        Files.writeString(file, "first second");
+
+        String result = memoryStrReplaceTool.memoryStrReplace("profile.md", " ", "");
+
+        assertTrue(result.contains("Replaced text"));
+        assertEquals("firstsecond", Files.readString(file));
+    }
+
+    @Test
+    void shouldRejectMissingAndRepeatedReplacementTargetsWithoutChangingFile() throws Exception {
+        Path file = tempDir.resolve("profile.md");
+        Files.writeString(file, "same same");
+
+        assertTrue(memoryStrReplaceTool.memoryStrReplace("profile.md", "missing", "new")
+                .contains("target text not found"));
+        assertTrue(memoryStrReplaceTool.memoryStrReplace("profile.md", "same", "new")
+                .contains("target text is not unique"));
+        assertEquals("same same", Files.readString(file));
     }
 }

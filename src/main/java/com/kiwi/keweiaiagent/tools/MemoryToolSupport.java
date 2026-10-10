@@ -110,6 +110,9 @@ final class MemoryToolSupport {
     }
 
     int countOccurrences(String content, String target) {
+        if (target == null || target.isEmpty()) {
+            throw new IllegalArgumentException("target text must not be null or empty");
+        }
         int count = 0;
         int fromIndex = 0;
         while (true) {
