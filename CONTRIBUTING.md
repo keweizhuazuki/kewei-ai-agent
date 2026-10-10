@@ -45,6 +45,7 @@ Before requesting review, make sure:
 
 - tests passed locally
 - docs were updated if behavior changed
+- `README.md` is the English default and links to `README.zh-CN.md`; keep both upgrade logs and next-iteration plans in sync, and distinguish completed checks from pending work
 - no secret values are in the diff
 - no local absolute paths remain in docs
 - unrelated changes are not bundled together

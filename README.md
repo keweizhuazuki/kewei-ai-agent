@@ -1,30 +1,34 @@
 # Kewei AI Agent
 
-基于 **Spring Boot + Spring AI + Vue 3** 的 AI Agent 实践项目。你可以在浏览器中体验恋爱场景对话、流式回复和多步任务，也可以从代码了解 RAG、工具调用、MCP、会话状态和长期记忆的实现。
+**English** | [简体中文](README.zh-CN.md)
 
-项目面向学习、二次开发和本地演示。当前默认模型为 Ollama，完整后端需要配置模型、数据库及启用的 MCP 服务；前端可以独立启动预览。项目尚未提供生产环境所需的完整鉴权、限流与审计能力，不建议直接暴露到公网。
+A hands-on AI Agent project built with **Spring Boot + Spring AI + Vue 3**. Explore contextual chat, streaming replies, multi-step tasks, RAG, tools, MCP and memory through a browser UI and Java backend.
 
-[快速开始](#快速开始) · [使用示例](#使用示例) · [部署与多平台使用](#部署与多平台使用) · [测试](#测试) · [架构与代码导航](#架构与代码导航)
+This project is for learning, extension and local demos. The frontend can run independently; the full backend needs configured models, a database and enabled MCP services. Production authentication, rate limiting and auditing are not complete. Do not expose it directly to the public internet.
 
-## 能做什么
+[Quick start](#quick-start) · [Examples](#examples) · [Deployment](#deployment) · [Tests](#tests) · [Architecture](#architecture) · [Upgrade log](#upgrade-log) · [Next upgrades](#next-upgrades)
 
-| 能力 | 当前实现与边界 |
+## Features
+
+| Feature | Current implementation and boundaries |
 | --- | --- |
-| LoveApp 对话 | 同步 / SSE 流式回复、会话记忆、图片问答；图片理解取决于所用模型 |
-| Manus 多步任务 | 工具调用、TodoWrite 进度、AskUserQuestion 补充信息、回答后续跑 |
-| RAG | Markdown 文档加载、本地向量库 / pgvector、查询预处理、关键词增强与检索过滤；主要在应用层提供 |
-| 记忆 | file / MySQL / Redis 会话记忆；独立的 Markdown 长期记忆工具 |
-| 工具 | 文件读写、资源下载、PDF 转图、PPT 生成、时间查询、邮件发送；外部服务须自行配置 |
-| 扩展 | 图片搜索 / 图片生成 MCP 子项目；通过 OpenClaw CLI 委派网页调研 |
-| 浏览器界面 | 首页 `/`、会话中心 `/chat`、健康检查与 API 调试 `/console`；ExerciseApp 为预留入口 |
+| LoveApp | Synchronous / SSE chat, session memory and image questions with a compatible model |
+| Manus | Multi-step tool use, TodoWrite progress, AskUserQuestion and answer-based continuation |
+| RAG | Markdown loading, local vectors / pgvector, query preprocessing, keyword enrichment and retrieval filters; mainly exposed through the application layer |
+| Memory | File / MySQL / Redis chat memory plus separate Markdown long-term memory tools |
+| Tools | File operations, downloads, PDF-to-image, PPT creation, time and email; external services require configuration |
+| Extensions | Image-search / generation MCP projects and OpenClaw CLI research delegation |
+| Browser UI | `/` home, `/chat` conversations, `/console` health and API debugging; ExerciseApp is a reserved entry |
 
-技术栈：Java 21、Spring Boot 4、Spring AI 2.0.0-M2、Maven、Vue 3、Vite 7、Pinia、Ollama、PostgreSQL / pgvector。仓库也保留 DashScope 依赖与示例，但默认排除了其自动配置；切换 Provider 需要同步检查配置及模型 Bean，不能只修改 API Key。
+**Stack:** Java 21, Spring Boot 4, Spring AI 2.0.0-M2, Maven, Vue 3, Vite 7, Pinia, Ollama, PostgreSQL / pgvector.
 
-## 快速开始
+Ollama is the default provider. DashScope dependencies and examples remain, but its auto-configuration is excluded. Switching providers requires reviewing configuration and model beans, not just replacing an API key.
 
-### 1. 先运行前端界面
+## Quick start
 
-只看界面不需要模型、数据库或 API Key。准备 Git、**Node.js 22.12+** 和 npm，在终端执行：
+### 1. Preview the frontend
+
+Install Git, **Node.js 22.12+** and npm. These commands work in macOS / Linux terminals and Windows PowerShell. UI-only preview needs no model, database or API key.
 
 ```bash
 git clone https://github.com/keweizhuazuki/kewei-ai-agent.git
@@ -33,41 +37,39 @@ npm ci
 npm run dev
 ```
 
-以上命令同样适用于 Windows PowerShell。打开终端打印的地址，默认是 `http://localhost:5173`。没有后端时可以浏览页面，但聊天、图片上传和健康检查不会成功。
+Open the URL printed by Vite, normally `http://localhost:5173`. Without a backend, pages render but chat, uploads and health checks cannot succeed.
 
-> 版本依据：锁定的 Vite 7 与 Vue 插件要求 Node `^20.19.0 || >=22.12.0`，Node 18 不满足要求。后端编译需要 **JDK 21**，仅安装 JRE 不够。仓库自带 Maven Wrapper，无需另装 Maven；首次使用会下载 Maven 和依赖。
+> The locked Vite 7 and Vue plugin require Node `^20.19.0 || >=22.12.0`; Node 18 is insufficient. Backend compilation needs **JDK 21**, not only a JRE. The Maven Wrapper downloads Maven and dependencies on first use, so a separate Maven installation is unnecessary.
 
-### 2. 准备完整后端的依赖
+### 2. Prepare backend dependencies
 
-| 依赖 | 何时需要 |
+| Dependency | Required for |
 | --- | --- |
-| Ollama | 默认聊天与 embedding；启动时就会加载文档并调用模型 |
-| PostgreSQL + pgvector | 默认后端的数据源与向量存储；当前不是开箱即用的可选模块 |
-| MCP 服务 | 默认配置已启用客户端，必须检查配置中的每个服务是否能启动 |
-| MySQL / Redis | 选择对应会话记忆实现时；初次运行可使用 `file` |
-| OpenClaw CLI | 网页调研及需要调研的 PPT 任务 |
-| SMTP / 图片服务凭据 | 使用发邮件、图片搜索或生成等对应功能时 |
+| Ollama | Default chat and embedding; startup loads documents and calls models |
+| PostgreSQL + pgvector | Default datasource and vector store; not optional in the current startup wiring |
+| MCP servers | Enabled by default; every configured server must be able to start |
+| MySQL / Redis | Only for the selected chat-memory implementation; you can start with `file` |
+| OpenClaw CLI | Web research and PPT tasks that require research |
+| SMTP / image-service credentials | Email, image search or image generation when used |
 
-Ollama 默认地址为 `http://localhost:11434`，模型名见 [`application.yml`](src/main/resources/application.yml)：
+Ollama defaults to `http://localhost:11434`; model names come from [`application.yml`](src/main/resources/application.yml):
 
 ```bash
 ollama pull qwen3.5:35b
 ollama pull mxbai-embed-large:latest
 ```
 
-`qwen3.5:35b` 对本机资源要求较高，可在本地配置中改成适合设备的模型；工具调用、图片理解等能力需要模型支持。默认 pgvector 维度为 `1024`，更换 embedding 模型时应同时检查维度与已有向量数据。
+The default chat model is resource-intensive. You can configure another model appropriate for your hardware, but tools and image input require model support. The pgvector dimension is `1024`; changing embeddings also requires checking dimensions and existing vector data.
 
-创建 PostgreSQL 数据库，并由有权限的账号在该数据库启用扩展：
+Create a PostgreSQL database, then enable this extension using an authorized database account:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### 3. 添加本地配置
+### 3. Add private configuration
 
-在 `src/main/resources/application-local.yml` 创建私有配置。默认启用 `local,ollama` profile；该本地文件被 Git 忽略，不要提交真实密钥或密码。
-
-以下是数据库与文件记忆配置起点，需要先设置对应环境变量：
+Create `src/main/resources/application-local.yml`, which is Git-ignored. The default profiles are `local,ollama`. Set the referenced environment variables before starting; never commit credentials.
 
 ```yaml
 spring:
@@ -88,133 +90,131 @@ app:
     dir: ${LONG_TERM_MEMORY_DIR:${user.dir}/tmp/agent-memory}
 ```
 
-`POSTGRES_URL` 使用 JDBC 格式，例如 `jdbc:postgresql://localhost:5432/kewei_ai_agent`。macOS / Linux 用 `export NAME='value'` 设置当前终端环境变量，PowerShell 用 `$env:NAME='value'`；启动后端的终端必须能读取这些变量。敏感值请在自己的环境中填写。
+Use a JDBC URL such as `jdbc:postgresql://localhost:5432/kewei_ai_agent`. Set variables with `export NAME='value'` on macOS / Linux or `$env:NAME='value'` in PowerShell, in the terminal that launches the backend. Enter sensitive values only in your own environment.
 
-按需在同一文件中补充：
+Optional settings in the same file:
 
-- MySQL 会话记忆：`app.chat-memory.type=mysql`，并设置 `app.datasource.mysql.url / username / password / driver-class-name`，驱动为 `com.mysql.cj.jdbc.Driver`。
-- Redis 会话记忆：`app.chat-memory.type=redis`，配置 `spring.data.redis.host / port` 及所需认证。
-- 邮件：`mail.smtp.host / port / username / password / from / ssl`。配置后邮件工具会实际发信，请使用专用测试账号和收件人。
-- OpenClaw：`openclaw.agent.command / id / timeout-seconds / session-prefix`。默认命令为 `openclaw`，需在后端进程的 PATH 中可用，并完成其自身配置。
-- 独立网页搜索工具：`search-api.api-key`；当前 Manus 调研路由使用 OpenClaw，并非自动调用该搜索工具。
+- **MySQL memory:** `app.chat-memory.type=mysql`; set `app.datasource.mysql.url / username / password / driver-class-name`, using driver `com.mysql.cj.jdbc.Driver`.
+- **Redis memory:** `app.chat-memory.type=redis`; set `spring.data.redis.host / port` and required authentication.
+- **Email:** `mail.smtp.host / port / username / password / from / ssl`. Configured tools send real email, so use test accounts and recipients.
+- **OpenClaw:** `openclaw.agent.command / id / timeout-seconds / session-prefix`. The default command `openclaw` must be configured and available in the backend's PATH.
+- **Standalone web search:** `search-api.api-key`. Manus research currently routes to OpenClaw instead.
 
-**MCP 需要单独检查。** [`mcp-servers.json`](src/main/resources/mcp-servers.json) 包含高德服务的占位 Key 和两个本地 JAR 的相对路径，不能原样当作可运行配置。先配置需要的服务及其凭据，再构建对应子项目；命令从仓库根目录执行：
+**Check MCP separately.** [`mcp-servers.json`](src/main/resources/mcp-servers.json) contains a placeholder AMap key and relative paths to two local JARs. Configure the services you need, then build their projects from the repository root:
 
 ```bash
 ./mvnw -f kewei-image-search-mcp-server/pom.xml package -DskipTests
 ./mvnw -f kewei-image-generation-mcp-server/pom.xml package -DskipTests
 ```
 
-PowerShell 将 `./mvnw` 换成 `.\mvnw.cmd`。上面跳过了测试，只用于构建。可将私有 MCP 配置放在已忽略的 `tmp/mcp-servers.json`，并在本地配置里设置 `spring.ai.mcp.client.stdio.servers-configuration: file:./tmp/mcp-servers.json`。保留的每个服务都应可启动；目前 `LoveApp` 还注入 MCP 的 `ToolCallbackProvider`，关闭整个 MCP 客户端前需同步检查 Bean 装配。
+Use `.\mvnw.cmd` instead of `./mvnw` in PowerShell. These commands skip tests. Private MCP settings can live in ignored `tmp/mcp-servers.json`, referenced by `spring.ai.mcp.client.stdio.servers-configuration: file:./tmp/mcp-servers.json` in local configuration. Every retained server must work; `LoveApp` injects `ToolCallbackProvider`, so review bean wiring before disabling the entire MCP client.
 
-### 4. 启动后端
+### 4. Start the backend
 
-回到仓库根目录，保留前端终端，在另一个终端启动：
+Keep the frontend running and open another terminal at the repository root.
 
-macOS / Linux：
+macOS / Linux:
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-- 后端 API：`http://localhost:8123/api`
-- 健康检查：`http://localhost:8123/api/health`
-- Swagger：`http://localhost:8123/api/swagger-ui.html`
+- Backend API: `http://localhost:8123/api`
+- Health: `http://localhost:8123/api/health`
+- Swagger: `http://localhost:8123/api/swagger-ui.html`
 
-先打开 `/health` 确认后端可达，再回到前端 `/console` 点击“立即检查”。健康检查成功只说明 HTTP 服务可用，不代表所有模型与工具均已验证。首次文档向量化或关键词增强可能较慢，请查看启动日志。
+Check the health URL, then click “立即检查” (Check now) at `/console`. A successful response confirms HTTP availability, not every model or tool. Initial document embedding and keyword enrichment may take time; inspect startup logs.
 
-## 使用示例
+## Examples
 
-以下是可以复制尝试的输入与操作步骤，不是预录的模型输出；实际结果取决于模型、工具配置与服务状态。
+These are suggested inputs and steps, not recorded model outputs. Results depend on the model, configured tools and service availability.
 
-### LoveApp：带上下文的对话
+### LoveApp: contextual chat
 
-1. 进入 `/chat`，选择 **LoveApp**，回复模式选择“事件流 sse_emitter”。
-2. 输入：`我和伴侣最近常因家务分工争执，想先梳理一次平和沟通的提纲。`
-3. 保持相同 `chatId`，继续问：`把刚才的提纲压缩成三句开场白。`
-4. 点击“新建 chatId”开始另一段会话。图片问答可先“上传图片”再发送问题，需要支持图片的模型。
+1. Open `/chat`, select **LoveApp** and “事件流 sse_emitter” (event stream).
+2. Try: `Help me outline a calm conversation about sharing household chores.`
+3. Keep the same `chatId`: `Turn that outline into three opening sentences.`
+4. “新建 chatId” starts another conversation. “上传图片” uploads an image for a question when the model supports images.
 
-前端会记住最近使用的 `chatId`，但页面消息列表不等于服务端历史记录。会话记忆由后端所选实现保存；不要把切换或刷新页面当成完整历史恢复功能。
+The frontend remembers recent chat IDs, not a complete rendered message history. Backend memory uses the selected storage implementation; switching or refreshing pages is not full history restoration.
 
-### Manus：计划 → 补充信息 → 继续执行
+### Manus: plan → ask → continue
 
-在 `/chat` 选择 **Manus**，尝试输入：
+Select **Manus** at `/chat` and try:
 
 ```text
-帮我制定一个三天的 Spring AI 学习计划。请先用 AskUserQuestion 确认我每天可用的时间，再用 TodoWrite 列出任务，最后逐项给出练习建议。不需要联网调研或发送邮件。
+Create a three-day Spring AI learning plan. First use AskUserQuestion to ask how much time I have each day, then use TodoWrite to plan tasks and suggest exercises. Do not research online or send email.
 ```
 
-当模型调用相关工具时：
+When the model calls the relevant tools:
 
-1. `question` 事件触发“需要补充信息”面板。
-2. 回答问题并点击“继续执行”，前端将答案提交到续跑接口。
-3. `todo` 事件更新“当前任务”进度，完成的任务快照会归档到聊天历史。
-4. `message` 事件追加输出，`done` 结束当前流；流失败时应检查报错后再重试。
+1. `question` opens “需要补充信息” (more information needed).
+2. Answer and click “继续执行” (continue) to submit answers to the continuation endpoint.
+3. `todo` updates “当前任务” (current task); completed snapshots move into chat history.
+4. `message` appends output and `done` ends the current stream. Inspect errors before retrying a failed stream.
 
-工具是否被调用由模型决定。Manus 的待回答状态和 Todo 快照保存在进程内存中，重启后端不能恢复未完成的任务；它们与文件 / MySQL / Redis 聊天记忆是两套机制。
+Tool use is model-driven. Manus pending questions and Todo snapshots are in-memory and cannot survive a backend restart. They are separate from file / MySQL / Redis chat memory.
 
-### API 示例
+### API examples
 
-接口均以 `http://localhost:8123/api` 为前缀：
+All routes below use the prefix `http://localhost:8123/api`.
 
-| 方法 | 路径 | 用途 |
+| Method | Route | Purpose |
 | --- | --- | --- |
-| GET | `/health` | HTTP 健康检查 |
-| GET | `/ai/love_app/chat/sync` | 同步聊天 |
-| GET | `/ai/love_app/chat/sse` | 普通流式聊天 |
-| GET | `/ai/love_app/chat/sse_emitter` | 带 `message` / `done` 命名事件的聊天 |
-| POST | `/ai/love_app/image/upload` | multipart 图片上传：`chatId`、`file` |
-| GET | `/ai/manus/chat` | 启动 Manus：`chatId`、`message` |
-| POST | `/ai/manus/chat/continue` | 提交答案并流式续跑 |
+| GET | `/health` | HTTP health check |
+| GET | `/ai/love_app/chat/sync` | Synchronous chat |
+| GET | `/ai/love_app/chat/sse` | Streaming chat |
+| GET | `/ai/love_app/chat/sse_emitter` | Named `message` / `done` events |
+| POST | `/ai/love_app/image/upload` | Multipart image upload: `chatId` + `file` |
+| GET | `/ai/manus/chat` | Start with `chatId` + `message` |
+| POST | `/ai/manus/chat/continue` | Submit answers and resume streaming |
 
-macOS / Linux 流式调用示例：
+macOS / Linux streaming request:
 
 ```bash
 curl -N -G 'http://localhost:8123/api/ai/love_app/chat/sse_emitter' \
   --data-urlencode 'chatId=readme-demo' \
-  --data-urlencode 'message=请帮我梳理一次平和沟通的提纲'
+  --data-urlencode 'message=Help me outline a calm conversation about household chores.'
 ```
 
-PowerShell 使用 `curl.exe`，避免与别名混淆：
+PowerShell uses `curl.exe` to avoid alias conflicts:
 
 ```powershell
-curl.exe -N -G "http://localhost:8123/api/ai/love_app/chat/sse_emitter" --data-urlencode "chatId=readme-demo" --data-urlencode "message=请帮我梳理一次平和沟通的提纲"
+curl.exe -N -G "http://localhost:8123/api/ai/love_app/chat/sse_emitter" --data-urlencode "chatId=readme-demo" --data-urlencode "message=Help me outline a calm conversation about household chores."
 ```
 
-续跑接口的 JSON 形状如下，`answers` 的键必须替换为实际 `question` 事件返回的 ID：
+For continuation, replace the answer key with the actual question ID from the `question` event:
 
 ```json
 {
   "chatId": "readme-demo",
   "answers": {
-    "实际问题ID": "每天一小时"
+    "question-id-from-event": "One hour per day"
   }
 }
 ```
 
-Todo 最小演示可调用 `/ai/love_app/chat/sse_emitter` 并传入 `option=todo-demo`；完整问题补充与 Todo 进度交互使用 Manus 链路。
+For a minimal Todo demo, pass `option=todo-demo` to `/ai/love_app/chat/sse_emitter`. Use Manus for the full question-and-progress UI.
 
-## 部署与多平台使用
+## Deployment
 
-### 构建与 API 地址
+### API address and builds
 
-前端默认连接 `http://localhost:8123/api`。这是**浏览器所在设备**的 localhost；部署到服务器或用手机访问时，必须改为该设备能访问的后端地址。
-
-在 `kewei-ai-agent-frontend/.env.local` 配置，例如：
+The default `http://localhost:8123/api` points to the **browser's device**. For deployment or mobile access, use a backend address reachable from that device. Set `kewei-ai-agent-frontend/.env.local`, replacing the example domain:
 
 ```dotenv
 VITE_API_BASE_URL=https://your-api.example.com/api
 ```
 
-这是示例地址，需要替换，保留 `/api` 前缀且不要在末尾加 `/`。若同源反向代理已把 `/api` 转发到后端，也可设置 `VITE_API_BASE_URL=/api`。当前 Vite 开发配置没有 API 代理，前后端分端口开发时仍使用完整后端 URL。
+Keep `/api` and omit a trailing slash. `VITE_API_BASE_URL=/api` also works behind a same-origin reverse proxy that forwards `/api` to the backend. Vite currently has no development API proxy, so use a full backend URL when frontend and backend run on different ports.
 
-`VITE_` 变量会进入公开前端产物，不能存密钥；它们在构建时注入，修改后需要重新构建：
+`VITE_` variables are public, build-time values, never a place for secrets. Rebuild after changing them:
 
 ```bash
 cd kewei-ai-agent-frontend
@@ -223,43 +223,43 @@ npm run build
 npm run preview
 ```
 
-`npm run preview` 用于本地检查 `dist`，不是生产服务。部署静态产物时：
+`preview` checks `dist` locally; it is not a production server.
 
-- 将 `dist` 交给静态服务器，给 `/chat`、`/console` 等 history 路由配置回退到 `index.html`。
-- HTTPS 页面应连接 HTTPS API，避免浏览器混合内容拦截。
-- 反向代理要支持 SSE，检查缓冲和读超时设置。
-- 公网发布前补上鉴权、工具执行权限和限流，并收紧当前宽松的 CORS 配置。
+- Serve `dist` with history fallback to `index.html` for routes such as `/chat` and `/console`.
+- Use HTTPS APIs from HTTPS pages to avoid mixed-content blocking.
+- Configure reverse-proxy SSE buffering and read timeouts.
+- Add authentication, tool permissions and rate limits before public exposure; restrict the current permissive CORS settings.
 
-后端从仓库根目录打包：
+Package the backend from the repository root:
 
 ```bash
 ./mvnw package -DskipTests
 java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar
 ```
 
-PowerShell 的打包命令用 `.\mvnw.cmd package -DskipTests`，`java -jar` 相同。该命令跳过测试，不代表验证通过。模型、数据库、MCP 和私有配置仍须就绪；文件输出、记忆和 MCP 相对路径取决于进程工作目录，建议从仓库根目录运行。
+PowerShell uses `.\mvnw.cmd package -DskipTests`; the Java command is the same. Skipping tests is not verification. Models, database, MCP and private configuration must still be ready. Run from the repository root to keep relative output, memory and MCP paths consistent.
 
-### 平台说明
+### Platform coverage
 
-| 平台 | 运行方式与验证情况 |
+| Platform | Status |
 | --- | --- |
-| Linux | 本次已在 Linux 云环境验证选定后端单测、前端测试与构建；未验证完整外部服务联调 |
-| macOS | 使用 `./mvnw` 和 npm 命令；尚未进行 macOS 运行验证 |
-| Windows | 使用 PowerShell、`.\mvnw.cmd` 和 `curl.exe`；尚未进行 Windows 运行验证 |
-| 手机 / 平板 | 作为浏览器客户端访问已部署的前端；不在手机上运行 Java 后端或 Ollama |
+| Linux | Selected backend unit tests, frontend tests and build verified in a Linux cloud environment; no full external-service integration validation |
+| macOS | Use `./mvnw` and npm; runtime not yet verified |
+| Windows | Use PowerShell, `.\mvnw.cmd`, `curl.exe`; runtime not yet verified |
+| Mobile / tablet | Browser clients of a deployed frontend, not hosts for this Java backend or Ollama |
 
-局域网调试可用 `npm run dev -- --host 0.0.0.0` 暴露前端，并将 API 地址设置为后端机器的局域网地址。仅在可信网络下使用，检查设备互通和防火墙；不要将开发服务器直接开放到公网。
+For trusted-LAN testing only, use `npm run dev -- --host 0.0.0.0`, configure a reachable LAN backend URL and check firewall rules. Do not expose the development server directly to the internet.
 
-## 测试
+## Tests
 
-从仓库根目录运行后端核心回归测试（不调用真实模型）：
+Run focused backend regression tests without live models from the repository root:
 
 ```bash
 ./mvnw "-Dtest=BaseAgentTest,ManusSession*Test,Memory*Test,FileOperationToolTest,ResourceDownloadToolTest,PdfConvertToolTest,OpenClawResearchToolTest,ShellOpenClawCommandRunnerTest" test
 ./mvnw -DskipTests compile
 ```
 
-Windows 用 `.\mvnw.cmd` 替换 `./mvnw`。前端使用 Node 内置测试运行器，当前主要覆盖 SSE 解析与连接生命周期：
+Use `.\mvnw.cmd` in PowerShell. Frontend tests use Node's built-in runner and currently focus on SSE parsing, URLs and connection lifecycle:
 
 ```bash
 cd kewei-ai-agent-frontend
@@ -268,56 +268,97 @@ npm test
 npm run build
 ```
 
-仓库也包含 `./mvnw test` 全量测试，但部分 `@SpringBootTest` 会启动应用并依赖真实模型、数据库、MCP 或网络；不能把以上核心测试通过等同于全量测试通过。PDF 转图测试会临时生成样本，验证子目录保留与同名冲突处理，不需要私人 PDF；邮件手工测试默认禁用。浏览器交互、真实模型回答及外部服务应另做联调验证。
+A full `./mvnw test` also includes application-context tests requiring real models, databases, MCP or network access. Focused passes are not a full-suite pass. PDF tests generate temporary samples and cover subdirectories and collisions; the manual email test is disabled. Browser flows and real service calls need separate integration validation.
 
-## 架构与代码导航
+## Architecture
 
 ```mermaid
 flowchart LR
-    UI[Vue 前端] --> API[AiController / SSE]
+    UI[Vue UI] --> API[AiController / SSE]
     API --> LOVE[LoveApp]
     API --> SESSION[ManusSessionService]
     SESSION --> AGENT[KeweiManus / ToolCallAgent / ReActAgent]
     SESSION --> STATE[ManusSessionStore]
-    LOVE --> MODEL[Ollama 模型]
+    LOVE --> MODEL[Ollama]
     AGENT --> MODEL
-    LOVE --> CHATMEM[File / MySQL / Redis 会话记忆]
+    LOVE --> CHATMEM[File / MySQL / Redis chat memory]
     LOVE --> RAG[RAG / pgvector]
-    LOVE --> MEMORY[长期记忆工具]
+    LOVE --> MEMORY[Long-term memory tools]
     AGENT --> MEMORY
-    AGENT --> TOOLS[Todo / Question / 文件 / PDF / PPT / 邮件]
-    AGENT --> RESEARCH[OpenClaw 调研]
-    LOVE --> MCP[MCP 图片等服务]
+    AGENT --> TOOLS[Todo / Question / File / PDF / PPT / Email]
+    AGENT --> RESEARCH[OpenClaw research]
+    LOVE --> MCP[MCP services]
 ```
 
-- [应用层 LoveApp](src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java)：文本、结构化输出、图片、RAG、Tools、MCP 与 Skills 的调用入口；并非所有方法都有独立前端按钮。
-- [ManusSessionService](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java) / [ManusSessionStore](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java)：任务路由、工具子集、补充问题、Todo 快照与续跑。
-- [ChatMemoryConfig](src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java)：会话记忆切换；[RAG 配置](src/main/java/com/kiwi/keweiaiagent/rag)：文档加载、向量化与检索。
-- [ToolRegistration](src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java)：注册工具；[OpenClawResearchTool](src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java)：调用 `openclaw agent --json` 并整理调研结果。
-- [MemoryToolSupport](src/main/java/com/kiwi/keweiaiagent/tools/MemoryToolSupport.java)：六个长期记忆工具的文件操作边界。默认 `tmp/agent-memory`，以 `MEMORY.md` 索引分类 Markdown 文件，拒绝越界和符号链接操作。
-- [前端 SSE 客户端](kewei-ai-agent-frontend/src/api/sse.js)：GET EventSource 与 POST fetch 流处理；[前端会话页面](kewei-ai-agent-frontend/src/views/ChatView.vue)：消息、补充问题与 Todo 展示。
+- [LoveApp](src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java): chat, structured output, images, RAG, Tools, MCP and Skills. Not every method has a UI button.
+- [ManusSessionService](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java) / [ManusSessionStore](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java): routing, tool subsets, questions, Todo snapshots and continuation.
+- [ChatMemoryConfig](src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java) / [RAG](src/main/java/com/kiwi/keweiaiagent/rag): memory backends, document loading, vectors and retrieval.
+- [ToolRegistration](src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java) / [OpenClawResearchTool](src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java): tool registration and `openclaw agent --json` delegation.
+- [MemoryToolSupport](src/main/java/com/kiwi/keweiaiagent/tools/MemoryToolSupport.java): six memory tools, defaulting to `tmp/agent-memory`, with `MEMORY.md` indexing typed Markdown files. Rejects path escapes and symbolic links.
+- [SSE client](kewei-ai-agent-frontend/src/api/sse.js) / [ChatView](kewei-ai-agent-frontend/src/views/ChatView.vue): GET EventSource / POST fetch streams, messages, questions and progress.
 
 ```text
 kewei-ai-agent/
-├── src/main/java/com/kiwi/keweiaiagent/   # API、应用、Agent、配置、工具
-├── src/main/resources/                  # 配置、提示词、RAG 文档、Skills
-├── src/test/                            # 单测、集成与手工测试
-├── kewei-ai-agent-frontend/              # Vue 3 前端
-├── kewei-image-search-mcp-server/        # 图片搜索 MCP
-├── kewei-image-generation-mcp-server/    # 图片生成 MCP
-├── CONTRIBUTING.md                      # 协作规范
-└── PROCEDURES.md                        # 开发过程记录
+├── src/main/java/com/kiwi/keweiaiagent/   # API, applications, agents, configuration, tools
+├── src/main/resources/                  # Configuration, prompts, RAG documents, Skills
+├── src/test/                            # Unit, integration and manual tests
+├── kewei-ai-agent-frontend/              # Vue 3 UI
+├── kewei-image-search-mcp-server/        # Image-search MCP
+├── kewei-image-generation-mcp-server/    # Image-generation MCP
+├── CONTRIBUTING.md                      # Contribution workflow
+└── PROCEDURES.md                        # Development notes
 ```
 
-## 常见问题
+## Troubleshooting
 
-- **`npm ci` 提示 engine 不匹配**：先检查 `node -v`，使用满足上述 Vite 版本要求的 Node。
-- **后端启动失败**：优先查看第一条异常，核对 JDK、PostgreSQL 连接、`vector` 扩展、Ollama 模型和 MCP 子进程；不要只看前端“网络异常”。
-- **页面打开但无法聊天**：确认 `/api/health` 可达、API 地址正确，再检查模型服务；手机上的 localhost 不会指向电脑。
-- **一直没有流式输出**：检查后端日志、模型加载情况、反向代理的 SSE 缓冲与超时；`/console` 可用于定位具体接口。
-- **续跑提示找不到会话**：检查 `chatId` 是否一致，以及后端是否重启；Manus 待执行状态不持久化。
-- **文件 / 记忆工具拒绝路径**：使用各工具输出目录内的相对路径，不使用绝对路径、`..` 越界路径或符号链接。
+- **Node engine mismatch:** Check `node -v` against Vite's requirement above.
+- **Backend startup failure:** Read the first exception; check JDK, PostgreSQL, the vector extension, Ollama and MCP subprocesses.
+- **UI works, chat fails:** Check `/api/health`, the API URL and model availability. Mobile localhost is not your computer.
+- **No streamed output:** Inspect backend logs, model loading, proxy buffering and timeouts. Use `/console` for diagnosis.
+- **Missing continuation session:** Check `chatId` and backend restarts. Manus pending state is not persistent.
+- **Rejected file or memory path:** Use relative paths within each tool's directory; avoid absolute paths, traversal and symbolic links.
 
-## 参与开发
+## Upgrade log
 
-请遵循 `issue → branch → commit → test → PR → review → merge`，正常开发不直接推送 `main`。提交前检查测试结果、文档、密钥与机器专属路径，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。完整开发记录见 [PROCEDURES.md](PROCEDURES.md)。
+### 2026-10-10
+
+These completed changes are backed by merged PRs and commits. This is a maintenance log, not a new release version.
+
+| Completed upgrade | Evidence |
+| --- | --- |
+| Reject empty memory replacement targets | [#1](https://github.com/keweizhuazuki/kewei-ai-agent/pull/1) · `2c6da53` |
+| Reject symbolic links in memory paths | [#2](https://github.com/keweizhuazuki/kewei-ai-agent/pull/2) · `c50cebb` |
+| Prevent destructive memory-root operations and unintended overwrites | [#3](https://github.com/keweizhuazuki/kewei-ai-agent/pull/3) · `fbdca5a` |
+| Clean up interrupted research subprocesses | [#4](https://github.com/keweizhuazuki/kewei-ai-agent/pull/4) · `69dd7af` |
+| Preserve SSE errors and event framing across chunks | [#5](https://github.com/keweizhuazuki/kewei-ai-agent/pull/5) · `e009b9a` |
+| Contain file and download operations within tool directories | [#6](https://github.com/keweizhuazuki/kewei-ai-agent/pull/6) · `7e6025a` |
+| Correct synchronous agent terminal states | [#7](https://github.com/keweizhuazuki/kewei-ai-agent/pull/7) · `87ec5d7` |
+| Consume answers atomically and isolate session snapshots | [#8](https://github.com/keweizhuazuki/kewei-ai-agent/pull/8) · `ad677a4` |
+| Preserve PDF subdirectories and detect same-run image-name collisions | [#9](https://github.com/keweizhuazuki/kewei-ai-agent/pull/9) · `d78ed7a` |
+| Support relative SSE API URLs for same-origin reverse proxies | [#10](https://github.com/keweizhuazuki/kewei-ai-agent/pull/10) · `6006c36` |
+| Add practical setup, usage, deployment and platform guidance | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
+
+**This documentation revision:** English is the default README, with a linked Simplified Chinese version. Both include the same completed-upgrade log and next-upgrade roadmap.
+
+**Verification boundary:** Linux checks cover focused backend tests, frontend tests and builds. Full external-service integration, Windows / macOS runtime validation and real UI screenshots remain outstanding.
+
+## Next upgrades
+
+These are pending plans, including the original roadmap. Bug fixes above do not complete these broader goals.
+
+- [ ] **Task observability:** Show per-step execution summaries, tool calls and state transitions. Expose useful execution information, not private model reasoning.
+- [ ] **Long-term memory controls:** Add finer-grained permissions, audit trails and synchronization policies.
+- [ ] **Production safeguards:** Add authentication, tool-level authorization, input validation, rate limits, audit logs and restrictive CORS.
+- [ ] **Domain-specific agents and MCP:** Split suitable task domains into independent agents or MCP services.
+- [ ] **Deployment toward an online demo:** Continue from the improved setup guide with safe configuration templates, a minimal backend startup path and optional-service isolation. A hosted live demo is still pending.
+- [ ] **CI regression checks:** Automate frontend tests/build and a clearly scoped backend suite, then record the actual first run. CI is not claimed complete in this revision.
+- [ ] **Real screenshots:** Capture desktop and mobile views from the actual app; label UI-only previews separately from live model sessions.
+- [ ] **Cross-platform validation:** Run the documented commands on Windows and macOS, recording versions and failures.
+- [ ] **Integration and browser tests:** Exercise model chat, question/continue, Todo progress, interruptions and retries against configured services.
+- [ ] **Session durability:** Define expiration and persistence for pending Manus tasks, including safe restart recovery.
+
+## Contributing
+
+Follow `issue → branch → commit → test → PR → review → merge`; do not push routine changes directly to `main`. Before review, check tests, documentation, secrets and machine-specific paths. See [CONTRIBUTING.md](CONTRIBUTING.md) and [PROCEDURES.md](PROCEDURES.md).
+
+For every subsequent change, update the completed-upgrade log with its date, evidence and verification limits, refresh the next-upgrade list, and keep [English](README.md) and [Simplified Chinese](README.zh-CN.md) synchronized.
