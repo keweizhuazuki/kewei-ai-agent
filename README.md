@@ -6,7 +6,22 @@ A hands-on AI Agent project built with **Spring Boot + Spring AI + Vue 3**. Expl
 
 This project is for learning, extension and local demos. The frontend can run independently; the full backend needs configured models, a database and enabled MCP services. Production authentication, rate limiting and auditing are not complete. Do not expose it directly to the public internet.
 
-[Quick start](#quick-start) · [Examples](#examples) · [Deployment](#deployment) · [Tests](#tests) · [Architecture](#architecture) · [Upgrade log](#upgrade-log) · [Next upgrades](#next-upgrades)
+[Screenshots](#screenshots) · [Quick start](#quick-start) · [Examples](#examples) · [Deployment](#deployment) · [Tests](#tests) · [Architecture](#architecture) · [Upgrade log](#upgrade-log) · [Next upgrades](#next-upgrades)
+
+## Screenshots
+
+Real landing-page captures of the built Vue frontend at commit `3027eeb`, from [the successful CI run](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809). These are frontend-only Chromium viewport previews, without a live backend or model connection; the mobile view is not physical-device verification.
+
+**Desktop · 1440 × 1000**
+
+![Desktop landing page in Chromium at 1440 by 1000 pixels](docs/images/desktop-preview.png)
+
+<details>
+<summary>Mobile viewport · 390 × 844</summary>
+
+<img src="docs/images/mobile-preview.png" width="390" alt="Landing page in a 390 by 844 Chromium mobile-sized viewport" />
+
+</details>
 
 ## Features
 
@@ -349,10 +364,12 @@ These completed changes are backed by merged PRs and commits. This is a maintena
 | Support relative SSE API URLs for same-origin reverse proxies | [#10](https://github.com/keweizhuazuki/kewei-ai-agent/pull/10) · `6006c36` |
 | Add practical setup, usage, deployment and platform guidance | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
 | Split English and Chinese guides with synchronized upgrade plans | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
+| Add isolated CI regression checks and automated UI capture | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
+| Add inspected desktop and mobile-viewport frontend previews to this guide | [Inspected CI captures](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) · [Screenshots](#screenshots) |
 
-**This CI revision:** Added [deterministic regression jobs and real UI capture](.github/workflows/ci.yml), without service credentials. The matching local scope passed 89 backend tests, 33 frontend tests and a production build; hosted results and screenshot artifacts are available in [GitHub Actions](https://github.com/keweizhuazuki/kewei-ai-agent/actions/workflows/ci.yml).
+**Verified CI run:** [Run 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) passed 89 focused backend tests, 33 frontend tests, the production frontend build and desktop/mobile-viewport screenshot capture. The [workflow](.github/workflows/ci.yml) needs no live-service credentials. The inspected screenshots are now included above.
 
-**Verification boundary:** Linux checks cover focused backend tests, frontend tests and builds. Full external-service integration, Windows / macOS runtime validation and real UI screenshots remain outstanding.
+**Verification boundary:** Hosted Linux checks cover focused tests, the frontend build and real Chromium UI captures. Live model conversations, full external-service/browser-flow integration, Windows / macOS runtime and physical mobile-device testing remain unverified.
 
 ## Next upgrades
 
@@ -364,7 +381,7 @@ These are pending plans, including the original roadmap. Bug fixes above do not 
 - [ ] **Domain-specific agents and MCP:** Split suitable task domains into independent agents or MCP services.
 - [ ] **Deployment toward an online demo:** Continue from the improved setup guide with safe configuration templates, a minimal backend startup path and optional-service isolation. A hosted live demo is still pending.
 - [ ] **CI coverage:** Keep the self-contained test selection current as features grow; add safely isolated integration jobs only when their service setup is available.
-- [ ] **Real screenshots:** Capture desktop and mobile views from the actual app; label UI-only previews separately from live model sessions.
+- [ ] **Live conversation screenshots:** Capture verified model-backed chat and Manus question/Todo flows, clearly separated from the completed frontend-only previews.
 - [ ] **Cross-platform validation:** Run the documented commands on Windows and macOS, recording versions and failures.
 - [ ] **Integration and browser tests:** Exercise model chat, question/continue, Todo progress, interruptions and retries against configured services.
 - [ ] **Session durability:** Define expiration and persistence for pending Manus tasks, including safe restart recovery.

@@ -6,7 +6,22 @@
 
 项目面向学习、二次开发和本地演示。当前默认模型为 Ollama，完整后端需要配置模型、数据库及启用的 MCP 服务；前端可以独立启动预览。项目尚未提供生产环境所需的完整鉴权、限流与审计能力，不建议直接暴露到公网。
 
-[快速开始](#快速开始) · [使用示例](#使用示例) · [部署与多平台使用](#部署与多平台使用) · [测试](#测试) · [架构与代码导航](#架构与代码导航) · [升级记录](#升级记录) · [下一步升级](#下一步升级)
+[界面截图](#界面截图) · [快速开始](#快速开始) · [使用示例](#使用示例) · [部署与多平台使用](#部署与多平台使用) · [测试](#测试) · [架构与代码导航](#架构与代码导航) · [升级记录](#升级记录) · [下一步升级](#下一步升级)
+
+## 界面截图
+
+以下是[已通过的 CI 运行](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)对提交 `3027eeb` 构建后 Vue 前端首页的真实截图。截图仅展示 Chromium 中的前端视口预览，未连接真实后端或模型；移动视口截图不代表手机实机验证。
+
+**桌面视口 · 1440 × 1000**
+
+![Chromium 中 1440 × 1000 视口的桌面首页](docs/images/desktop-preview.png)
+
+<details>
+<summary>移动视口 · 390 × 844</summary>
+
+<img src="docs/images/mobile-preview.png" width="390" alt="Chromium 中 390 × 844 移动尺寸视口的首页" />
+
+</details>
 
 ## 能做什么
 
@@ -351,10 +366,12 @@ kewei-ai-agent/
 | 支持同源反向代理下的相对 SSE API 地址 | [#10](https://github.com/keweizhuazuki/kewei-ai-agent/pull/10) · `6006c36` |
 | 补充实用启动、使用、部署与多平台说明 | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
 | 拆分英文默认页与中文入口，同步升级计划 | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
+| 增加隔离的 CI 回归检查与自动界面截图 | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
+| 完成并展示首批桌面与移动视口前端真实截图 | [已检查的 CI 截图](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) · [界面截图](#界面截图) |
 
-**本次 CI 升级：** 新增[确定性回归检查与真实界面截图流程](.github/workflows/ci.yml)，不需要服务凭据。对应本地范围已通过 89 项后端测试、33 项前端测试及生产构建；托管结果和截图产物以 [GitHub Actions](https://github.com/keweizhuazuki/kewei-ai-agent/actions/workflows/ci.yml) 为准。
+**已验证的 CI 运行：** [运行 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)已通过 89 项核心后端测试、33 项前端测试、前端生产构建与桌面/移动视口截图。[工作流](.github/workflows/ci.yml)无需真实服务凭据，已检查的截图现已收录在上方。
 
-**验证边界：** Linux 已验证核心后端测试、前端测试与构建；完整外部服务联调、Windows/macOS 运行验证和真实界面截图仍未完成。
+**验证边界：** 托管 Linux 环境已验证核心测试、前端构建与真实 Chromium 界面截图；真实模型会话、完整外部服务与浏览器流程联调、Windows/macOS 运行和手机实机验证仍未完成。
 
 ## 下一步升级
 
@@ -366,7 +383,7 @@ kewei-ai-agent/
 - [ ] **领域独立 Agent 与 MCP：** 按适合的任务域继续拆分独立 Agent 或 MCP 服务。
 - [ ] **部署与在线演示：** 在已有部署说明上补充安全配置模板、最小后端启动路径与可选服务隔离；实际托管的在线演示仍待完成。
 - [ ] **CI 覆盖：** 随功能增长维护无需外部服务的测试清单；服务环境就绪后，再增加安全隔离的联调任务。
-- [ ] **真实截图：** 从实际应用截取桌面与移动界面，明确区分纯界面预览和真实模型会话。
+- [ ] **真实会话截图：** 验证并截取模型对话、Manus 提问与 Todo 流程，与已完成的纯前端预览明确区分。
 - [ ] **跨平台验证：** 在 Windows、macOS 实测文档命令，记录环境版本与失败项。
 - [ ] **联调与浏览器测试：** 覆盖真实聊天、提问续跑、Todo 进度、中断与重试。
 - [ ] **会话持久化：** 明确待执行 Manus 任务的过期与持久化方案，支持安全重启恢复。
