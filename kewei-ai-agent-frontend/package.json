@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "node --test",
+    "test:ui": "node scripts/ui-flows.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "screenshots": "node scripts/capture-ui.mjs"

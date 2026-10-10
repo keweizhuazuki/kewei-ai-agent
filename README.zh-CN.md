@@ -176,6 +176,8 @@ Windows PowerShell：
 
 工具是否被调用由模型决定。Manus 的待回答状态和 Todo 快照保存在进程内存中，重启后端不能恢复未完成的任务；它们与文件 / MySQL / Redis 聊天记忆是两套机制。
 
+回复进行中会禁用新建与切换会话。暂停等待补充信息后，切换会话会清除界面中旧的问题、答案与置顶 Todo。续跑失败会保留答案，便于在同一会话重试；成功续跑会更新并归档最新 Todo 状态。
+
 ### API 示例
 
 接口均以 `http://localhost:8123/api` 为前缀：
@@ -321,7 +323,7 @@ PowerShell 的打包命令用 `.\mvnw.cmd package -DskipTests`，`java -jar` 相
 ./mvnw -DskipTests compile
 ```
 
-Windows 用 `.\mvnw.cmd` 替换 `./mvnw`。前端使用 Node 内置测试运行器，当前主要覆盖 SSE 解析与连接生命周期：
+Windows 用 `.\mvnw.cmd` 替换 `./mvnw`。前端使用 Node 内置测试运行器，覆盖 SSE 解析、URL、连接生命周期与会话状态回归：
 
 ```bash
 cd kewei-ai-agent-frontend
@@ -342,6 +344,16 @@ npm run screenshots
 ```
 
 在 `kewei-ai-agent-frontend` 内执行，并使用支持浏览器运行的环境。图片输出到 `docs/images/`，经实际查看确认后再放入文档。
+
+完成 `npm run build` 并安装 Chromium 后，可运行新增的模拟数据浏览器交互检查：
+
+```bash
+npm run test:ui
+npm run test:ui -- --screenshots
+```
+
+第二条命令同时请求生成聊天截图。[浏览器测试](kewei-ai-agent-frontend/scripts/ui-flows.mjs)使用真实 Chromium，但拦截 API/SSE 并返回合成数据：覆盖续跑失败重试与 Todo 完成、新建会话、切换会话、发送失败后重试四类场景，各在桌面与移动尺寸视口执行，共 **8 个场景**，无需真实后端或模型。本次修订的托管执行与聊天截图检查仍待完成，尚不宣称这些场景已通过。
+
 
 ## 架构与代码导航
 
@@ -395,7 +407,7 @@ kewei-ai-agent/
 
 ### 2026-10-10
 
-以下已完成升级对应已合并的 PR 与真实提交，属于维护记录，不代表新发布版本。
+以下已实现升级关联对应 PR 与真实提交，尚未完成的托管验证会明确标注；属于维护记录，不代表新发布版本。
 
 | 已完成升级 | 依据 |
 | --- | --- |
@@ -413,8 +425,11 @@ kewei-ai-agent/
 | 拆分英文默认页与中文入口，同步升级计划 | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
 | 增加隔离的 CI 回归检查与自动界面截图 | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
 | 完成并展示首批桌面与移动视口前端真实截图 | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
+| 增加可选 ToolTape 录制/回放，修正 Agent 回调调度 | [#15](https://github.com/keweizhuazuki/kewei-ai-agent/pull/15) · `74a73ad` |
 
-**本次集成修订：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。本次集成的托管 CI 尚未验证。
+**ToolTape 验证：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。相同后端/profile 范围也已通过[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505)。
+
+**本次前端修订：** 修复续跑 Todo 解码、切换会话后残留的问题，并在回复进行中禁止切换会话。Linux 本地已通过全部 **39 项 Node 测试**和前端构建；新增的 6 项组件状态回归在旧实现上均会失败。已补充上述 8 场景模拟浏览器测试，托管浏览器结果与聊天截图仍待完成。
 
 **已验证的 CI 运行：** [运行 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)已通过 89 项核心后端测试、33 项前端测试、前端生产构建与桌面/移动视口截图。[工作流](.github/workflows/ci.yml)无需真实服务凭据，已检查的截图现已收录在上方。
 
@@ -432,7 +447,7 @@ kewei-ai-agent/
 - [ ] **CI 覆盖：** 随功能增长维护无需外部服务的测试清单；服务环境就绪后，再增加安全隔离的联调任务。
 - [ ] **真实会话截图：** 验证并截取模型对话、Manus 提问与 Todo 流程，与已完成的纯前端预览明确区分。
 - [ ] **跨平台验证：** 在 Windows、macOS 实测文档命令，记录环境版本与失败项。
-- [ ] **联调与浏览器测试：** 覆盖真实聊天、提问续跑、Todo 进度、中断与重试。
+- [ ] **浏览器与服务覆盖：** 在托管 CI 验证新增的 8 场景模拟 Chromium 测试并检查聊天截图，再扩展真实模型/服务流程、中断与重试。
 - [ ] **ToolTape 隔离：** 在当前单一串行会话之外扩展前，增加会话级隔离与经过审查的逐工具捕获策略。
 - [ ] **会话持久化：** 明确待执行 Manus 任务的过期与持久化方案，支持安全重启恢复。
 

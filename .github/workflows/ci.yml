@@ -76,6 +76,8 @@ jobs:
       - run: npm run build
       - name: Install Chromium for real UI previews
         run: npx playwright install --with-deps chromium
+      - name: Test mocked chat flows and capture examples
+        run: npm run test:ui -- --screenshots
       - name: Capture desktop and mobile UI previews
         run: npm run screenshots
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

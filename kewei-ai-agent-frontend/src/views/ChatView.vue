@@ -32,7 +32,7 @@
           </select>
         </div>
 
-        <button class="btn-outline" type="button" @click="newChat">新建 chatId</button>
+        <button class="btn-outline" type="button" :disabled="sending" @click="newChat">新建 chatId</button>
       </div>
     </aside>
 
@@ -43,7 +43,7 @@
           <p>app: {{ store.activeApp }} | chatId: {{ store.currentChatId }}</p>
         </div>
         <div class="top-actions">
-          <select v-model="selectedChatId" @change="switchChat">
+          <select v-model="selectedChatId" :disabled="sending" @change="switchChat">
             <option v-for="id in store.chatIds" :key="id" :value="id">{{ id }}</option>
           </select>
           <button class="btn-mini" type="button" @click="copyText(store.currentChatId)">复制 chatId</button>
@@ -228,11 +228,15 @@ watch(
 )
 
 function switchChat() {
+  if (sending.value) return
+  clearPendingQuestions()
   store.switchChatId(selectedChatId.value)
   pinnedTodo.value = null
 }
 
 function newChat() {
+  if (sending.value) return
+  clearPendingQuestions()
   const id = store.createNewChatId()
   selectedChatId.value = id
   pinnedTodo.value = null
@@ -544,7 +548,7 @@ async function submitPendingAnswers() {
         onOpen,
         onMessage,
         onQuestion,
-        onTodo: handleTodoUpdate,
+        onTodo,
         onDone,
         onError,
       }),
