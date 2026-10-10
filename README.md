@@ -6,7 +6,7 @@ A hands-on AI Agent project built with **Spring Boot + Spring AI + Vue 3**. Expl
 
 This project is for learning, extension and local demos. The frontend can run independently; the full backend needs configured models, a database and enabled MCP services. Production authentication, rate limiting and auditing are not complete. Do not expose it directly to the public internet.
 
-[Screenshots](#screenshots) · [Quick start](#quick-start) · [Examples](#examples) · [Deployment](#deployment) · [Tests](#tests) · [Architecture](#architecture) · [Upgrade log](#upgrade-log) · [Next upgrades](#next-upgrades)
+[Screenshots](#screenshots) · [Quick start](#quick-start) · [Examples](#examples) · [ToolTape](#optional-tooltape-integration) · [Deployment](#deployment) · [Tests](#tests) · [Architecture](#architecture) · [Upgrade log](#upgrade-log) · [Next upgrades](#next-upgrades)
 
 ## Screenshots
 
@@ -217,6 +217,51 @@ For continuation, replace the answer key with the actual question ID from the `q
 
 For a minimal Todo demo, pass `option=todo-demo` to `/ai/love_app/chat/sse_emitter`. Use Manus for the full question-and-progress UI.
 
+## Optional ToolTape integration
+
+[ToolTape](https://github.com/keweizhuazuki/tooltape) records and replays **tool callbacks**, not model responses or whole Agent runs. This opt-in adapter wraps the `allTools` and `memoryTools` beans. MCP providers and other operations outside those arrays are not intercepted; running the full application still requires its usual model and service setup.
+
+### Build and test the pinned integration
+
+From the repository root, initialize the exact submodule revision pinned by this repository, then activate the Maven profile:
+
+```bash
+git submodule update --init --recursive
+./mvnw -Ptooltape clean "-Dtest=ToolTape*,ToolCallAgentTest,ToolRegistrationTest" test
+./mvnw -Ptooltape package -DskipTests
+```
+
+Use `.\mvnw.cmd` in PowerShell. Do not use `git submodule update --remote` for a reproducible build. A clean default build without `-Ptooltape` excludes ToolTape and its adapter; even a profile-enabled build defaults to runtime mode `off`. Use `clean` when switching build profiles to remove stale compiled classes.
+
+### Runtime settings
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `kewei.tooltape.mode` | `off` | `off`, `record` or `replay` |
+| `kewei.tooltape.path` | Unset | Required tape path for record/replay; recording refuses to overwrite an existing file |
+| `kewei.tooltape.input-fields` | Empty | Comma-separated allowlist of reviewed top-level scalar inputs; excluded values are not captured or compared |
+| `kewei.tooltape.capture-output` | `false` | Explicitly enables storing the complete tool-return string |
+
+**Privacy first:** Empty input/output allowlists retain tool names, order, timing and exception types, but no argument or return values. A recording without a captured result cannot faithfully replay that result: replay fails clearly, with no placeholder response and no fallback to the live tool. `ToolContext` is passed in memory only, never written to the tape. These defaults apply to tape capture, not existing application logs or model requests.
+
+**Synthetic fixtures only for output capture.** `capture-output=true` stores the entire returned string, which can include credentials or private data; it is not content sanitization. Review every captured input and output, use a dedicated test process, and keep tapes out of commits. Recording executes the real wrapped tool and can cause side effects. The synthetic [Agent dispatch regression](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java) is the safer starting point and needs no live model.
+
+To try runtime capture with reviewed synthetic data, first create `tmp/tooltape` (`mkdir -p tmp/tooltape` on macOS/Linux, or `New-Item -ItemType Directory -Force tmp/tooltape` in PowerShell), then run:
+
+```bash
+java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar --kewei.tooltape.mode=record --kewei.tooltape.path=tmp/tooltape/synthetic.tape --kewei.tooltape.capture-output=true
+```
+
+Exercise the relevant wrapped tools in **one serial test session**, then shut down the application gracefully so Spring closes the recorder and writes the completion marker. Restart with the same capture policy to replay the same ordered tool calls:
+
+```bash
+java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar --kewei.tooltape.mode=replay --kewei.tooltape.path=tmp/tooltape/synthetic.tape --kewei.tooltape.capture-output=true
+```
+
+This example leaves the input allowlist empty; add the same reviewed `kewei.tooltape.input-fields` value to both runs to compare selected arguments. New v2 recordings must be closed and use the same policy; missing files, incomplete recordings and policy mismatches fail. Closing replay also checks that all recorded calls were consumed.
+
+The adapter uses one process-wide ordered session and rejects concurrent or recursive tool calls. It is not ready for production multi-user capture. Replay substitutes only wrapped tools; the model is still live unless separately stubbed, and may generate a different call sequence.
+
 ## Deployment
 
 ### API address and builds
@@ -365,7 +410,9 @@ These completed changes are backed by merged PRs and commits. This is a maintena
 | Add practical setup, usage, deployment and platform guidance | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
 | Split English and Chinese guides with synchronized upgrade plans | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
 | Add isolated CI regression checks and automated UI capture | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
-| Add inspected desktop and mobile-viewport frontend previews to this guide | [Inspected CI captures](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) · [Screenshots](#screenshots) |
+| Add inspected desktop and mobile-viewport frontend previews to this guide | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
+
+**Current integration revision:** Added the opt-in ToolTape adapter and corrected `ToolCallAgent` dispatch to pass the available callbacks to Spring AI. Local Linux checks passed **90 default-build regression tests** and **22 profile-enabled tests plus packaging**, using pinned ToolTape revision `7d08b44`. A clean default build contains no ToolTape core or adapter classes. The [synthetic Agent regression](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java) exercises `think → act` with a deterministic local model stub and verifies replay causes no second tool side effect. Hosted CI for this integration revision is not yet verified.
 
 **Verified CI run:** [Run 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) passed 89 focused backend tests, 33 frontend tests, the production frontend build and desktop/mobile-viewport screenshot capture. The [workflow](.github/workflows/ci.yml) needs no live-service credentials. The inspected screenshots are now included above.
 
@@ -384,6 +431,7 @@ These are pending plans, including the original roadmap. Bug fixes above do not 
 - [ ] **Live conversation screenshots:** Capture verified model-backed chat and Manus question/Todo flows, clearly separated from the completed frontend-only previews.
 - [ ] **Cross-platform validation:** Run the documented commands on Windows and macOS, recording versions and failures.
 - [ ] **Integration and browser tests:** Exercise model chat, question/continue, Todo progress, interruptions and retries against configured services.
+- [ ] **ToolTape isolation:** Add per-session separation and reviewed per-tool capture policies before expanding beyond the current single serial session.
 - [ ] **Session durability:** Define expiration and persistence for pending Manus tasks, including safe restart recovery.
 
 ## Contributing

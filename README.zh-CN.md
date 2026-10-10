@@ -6,7 +6,7 @@
 
 项目面向学习、二次开发和本地演示。当前默认模型为 Ollama，完整后端需要配置模型、数据库及启用的 MCP 服务；前端可以独立启动预览。项目尚未提供生产环境所需的完整鉴权、限流与审计能力，不建议直接暴露到公网。
 
-[界面截图](#界面截图) · [快速开始](#快速开始) · [使用示例](#使用示例) · [部署与多平台使用](#部署与多平台使用) · [测试](#测试) · [架构与代码导航](#架构与代码导航) · [升级记录](#升级记录) · [下一步升级](#下一步升级)
+[界面截图](#界面截图) · [快速开始](#快速开始) · [使用示例](#使用示例) · [ToolTape](#可选-tooltape-集成) · [部署与多平台使用](#部署与多平台使用) · [测试](#测试) · [架构与代码导航](#架构与代码导航) · [升级记录](#升级记录) · [下一步升级](#下一步升级)
 
 ## 界面截图
 
@@ -217,6 +217,51 @@ curl.exe -N -G "http://localhost:8123/api/ai/love_app/chat/sse_emitter" --data-u
 
 Todo 最小演示可调用 `/ai/love_app/chat/sse_emitter` 并传入 `option=todo-demo`；完整问题补充与 Todo 进度交互使用 Manus 链路。
 
+## 可选 ToolTape 集成
+
+[ToolTape](https://github.com/keweizhuazuki/tooltape)录制与回放的是**工具回调**，不是模型回答或整个 Agent 运行。此可选适配器包装 `allTools` 与 `memoryTools` Bean；MCP Provider 和数组之外的操作不在拦截范围内。完整应用仍需要原有模型与依赖服务。
+
+### 构建并测试固定版本
+
+从仓库根目录初始化仓库锁定版本的子模块，再启用 Maven profile：
+
+```bash
+git submodule update --init --recursive
+./mvnw -Ptooltape clean "-Dtest=ToolTape*,ToolCallAgentTest,ToolRegistrationTest" test
+./mvnw -Ptooltape package -DskipTests
+```
+
+PowerShell 使用 `.\mvnw.cmd`。可复现构建不要使用 `git submodule update --remote`。不带 `-Ptooltape` 的干净默认构建不包含 ToolTape 及适配器；即使启用该 profile，运行时默认仍为 `off`。切换构建 profile 时使用 `clean` 清除旧的编译产物。
+
+### 运行时配置
+
+| 属性 | 默认值 | 含义 |
+| --- | --- | --- |
+| `kewei.tooltape.mode` | `off` | 可选 `off`、`record`、`replay` |
+| `kewei.tooltape.path` | 未设置 | 录制/回放时必填；录制拒绝覆盖已有文件 |
+| `kewei.tooltape.input-fields` | 空 | 经审查的顶层标量输入字段白名单，以逗号分隔；未纳入的值不录制、不比较 |
+| `kewei.tooltape.capture-output` | `false` | 显式允许保存完整工具返回字符串 |
+
+**隐私优先：** 默认输入/输出白名单为空，只保留工具名称、顺序、耗时与异常类型，不保存参数值或返回值。未捕获返回值的记录无法精确回放：回放会明确报错，不返回占位结果，也不会回退调用真实工具。`ToolContext` 仅在内存中透传，不写入记录。这些默认策略仅适用于记录文件，不改变现有应用日志或模型请求。
+
+**输出捕获仅用于已审查的合成测试数据。** `capture-output=true` 会原样保存整个返回字符串，可能包含凭据或隐私数据，并不提供内容清洗。请审查每个输入与输出，使用独立测试进程，不提交记录文件。录制会执行真实包装工具，并可能产生副作用。建议先运行不需要真实模型的[合成 Agent 调度回归测试](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)。
+
+如需用已审查合成数据尝试运行时捕获，先创建 `tmp/tooltape` 目录（macOS/Linux：`mkdir -p tmp/tooltape`；PowerShell：`New-Item -ItemType Directory -Force tmp/tooltape`），再运行：
+
+```bash
+java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar --kewei.tooltape.mode=record --kewei.tooltape.path=tmp/tooltape/synthetic.tape --kewei.tooltape.capture-output=true
+```
+
+在**一个串行测试会话**中实际调用相关包装工具，结束后正常关闭应用，让 Spring 关闭录制器并写入完成标记。随后使用相同捕获策略重启，回放相同顺序的工具调用：
+
+```bash
+java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar --kewei.tooltape.mode=replay --kewei.tooltape.path=tmp/tooltape/synthetic.tape --kewei.tooltape.capture-output=true
+```
+
+示例保持输入白名单为空；如需比较特定参数，在两次运行中设置相同且已审查的 `kewei.tooltape.input-fields`。新 v2 记录必须已关闭且策略一致；缺失文件、记录不完整或策略不匹配均会失败。关闭回放器时还会检查所有记录调用是否消费完毕。
+
+适配器使用进程级有序会话，拒绝并发或递归工具调用，暂不适合生产环境多用户捕获。回放仅替换被包装的工具，模型若未另行 stub 仍会真实运行，也可能生成不同的调用顺序。
+
 ## 部署与多平台使用
 
 ### 构建与 API 地址
@@ -367,7 +412,9 @@ kewei-ai-agent/
 | 补充实用启动、使用、部署与多平台说明 | [#11](https://github.com/keweizhuazuki/kewei-ai-agent/pull/11) · `8d1b783` |
 | 拆分英文默认页与中文入口，同步升级计划 | [#12](https://github.com/keweizhuazuki/kewei-ai-agent/pull/12) · `8e34155` |
 | 增加隔离的 CI 回归检查与自动界面截图 | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
-| 完成并展示首批桌面与移动视口前端真实截图 | [已检查的 CI 截图](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) · [界面截图](#界面截图) |
+| 完成并展示首批桌面与移动视口前端真实截图 | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
+
+**本次集成修订：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。本次集成的托管 CI 尚未验证。
 
 **已验证的 CI 运行：** [运行 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)已通过 89 项核心后端测试、33 项前端测试、前端生产构建与桌面/移动视口截图。[工作流](.github/workflows/ci.yml)无需真实服务凭据，已检查的截图现已收录在上方。
 
@@ -386,6 +433,7 @@ kewei-ai-agent/
 - [ ] **真实会话截图：** 验证并截取模型对话、Manus 提问与 Todo 流程，与已完成的纯前端预览明确区分。
 - [ ] **跨平台验证：** 在 Windows、macOS 实测文档命令，记录环境版本与失败项。
 - [ ] **联调与浏览器测试：** 覆盖真实聊天、提问续跑、Todo 进度、中断与重试。
+- [ ] **ToolTape 隔离：** 在当前单一串行会话之外扩展前，增加会话级隔离与经过审查的逐工具捕获策略。
 - [ ] **会话持久化：** 明确待执行 Manus 任务的过期与持久化方案，支持安全重启恢复。
 
 ## 参与开发

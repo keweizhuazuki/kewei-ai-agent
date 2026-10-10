@@ -1,0 +1,3 @@
+[submodule "vendor/tooltape"]
+	path = vendor/tooltape
+	url = https://github.com/keweizhuazuki/tooltape.git

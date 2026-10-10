@@ -10,6 +10,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 
 import java.util.List;
@@ -19,6 +21,37 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolCallAgentTest {
+
+    @Test
+    void act_shouldDispatchRegisteredCallbackWithoutCallingModel() {
+        AtomicInteger calls = new AtomicInteger();
+        ToolCallback callback = new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return ToolDefinition.builder().name("offlineFixture")
+                        .description("Synthetic deterministic callback")
+                        .inputSchema("{\"type\":\"object\",\"properties\":{}}")
+                        .build();
+            }
+
+            @Override
+            public String call(String arguments) {
+                calls.incrementAndGet();
+                return "fixture result";
+            }
+        };
+        ToolCallAgent agent = new ToolCallAgent(new ToolCallback[] { callback });
+        agent.getMessageList().add(new UserMessage("Synthetic task"));
+        AssistantMessage plan = AssistantMessage.builder().content("")
+                .toolCalls(List.of(new ToolCall("fixture", "function", "offlineFixture", "{}")))
+                .build();
+        agent.setToolCallChatResponse(new ChatResponse(List.of(new Generation(plan))));
+
+        assertTrue(agent.act().contains("fixture result"));
+        assertEquals(1, calls.get());
+        ToolResponseMessage response = (ToolResponseMessage) agent.getMessageList().getLast();
+        assertEquals("fixture result", response.getResponses().getFirst().responseData());
+    }
 
     @Test
     void think_shouldNotAppendNextStepPromptAsUserMessageOnEveryStep() {

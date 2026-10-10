@@ -66,6 +66,7 @@ public class ToolCallAgent extends ReActAgent{
         this.chatOptions = ToolCallingChatOptions
                 .builder()
                 .internalToolExecutionEnabled(false)
+                .toolCallbacks(availableTools)
                 .build();
     }
 
