@@ -86,3 +86,73 @@ jobs:
           path: docs/images/*.png
           if-no-files-found: error
           retention-days: 7
+
+  platform:
+    name: Cross-platform checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            shell: pwsh
+            wrapper: '.\mvnw.cmd'
+          - os: macos-latest
+            shell: bash
+            wrapper: ./mvnw
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: kewei-ai-agent-frontend/package-lock.json
+      - name: Record Maven, Java and operating-system versions
+        run: ${{ matrix.wrapper }} --version
+      - name: Record Node version and architecture
+        run: node -p "'Node ' + process.version + ' / ' + process.platform + ' / ' + process.arch"
+      - name: Record npm version
+        run: npm --version
+      - name: Record PowerShell version
+        if: runner.os == 'Windows'
+        run: $PSVersionTable.PSVersion.ToString()
+      # No live model, database, SMTP, OpenClaw or public-web tool execution.
+      # Keep symlink safety tests; the PDF case-collision test may report a skip.
+      - name: Run deterministic backend tests with the native wrapper
+        run: >-
+          ${{ matrix.wrapper }} --batch-mode --no-transfer-progress
+          clean
+          "-Dtest=BaseAgentTest,ManusSessionStoreTest,ManusSessionServiceTest,ToolCallAgentTest,KeweiManusPromptTest,LongTermMemoryPromptServiceTest,MemoryToolsTest,MemoryPathSafetyTest,MemoryMutationSafetyTest,FileOperationToolTest,ResourceDownloadToolTest,PdfConvertToolTest,PptWriterToolTest,OpenClawResearchToolTest,ShellOpenClawCommandRunnerTest,TodoWriteToolTest,TimeToolTest,EmailToolTest,ToolRegistrationTest"
+          test
+      - name: Package the default backend without starting services
+        run: ${{ matrix.wrapper }} --batch-mode --no-transfer-progress -DskipTests package
+      - name: Install frontend dependencies without lifecycle scripts
+        working-directory: kewei-ai-agent-frontend
+        run: npm ci --ignore-scripts
+      - name: Run frontend unit tests
+        working-directory: kewei-ai-agent-frontend
+        run: npm test
+      - name: Build the frontend
+        working-directory: kewei-ai-agent-frontend
+        run: npm run build
+      - name: Upload backend test results, including failures and skips
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: platform-test-reports-${{ matrix.os }}
+          path: target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 7

@@ -321,6 +321,8 @@ PowerShell uses `.\mvnw.cmd package -DskipTests`; the Java command is the same. 
 
 ### Platform coverage
 
+Windows and macOS CI jobs now exercise native Maven wrappers, the isolated backend tests, default packaging, and frontend tests/builds (dependency install uses `npm ci --ignore-scripts`). They log runtime versions and retain test reports, including skips. Initial hosted results are pending; this does not validate full service startup or browsers on those systems.
+
 | Platform | Status |
 | --- | --- |
 | Linux | Selected backend unit tests, frontend tests and build verified in a Linux cloud environment; no full external-service integration validation |
@@ -450,6 +452,8 @@ Implemented changes are linked to their PRs and commits; pending hosted validati
 
 **Verified CI run:** [Run 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) passed 89 focused backend tests, 33 frontend tests, the production frontend build and desktop/mobile-viewport screenshot capture. The [workflow](.github/workflows/ci.yml) needs no live-service credentials. The inspected screenshots are now included above.
 
+**Current platform revision:** Added read-only Windows/PowerShell and macOS/Bash compatibility jobs to the [workflow](.github/workflows/ci.yml). Native wrapper execution and reports remain to be verified by the first hosted run; the PDF case-collision test may skip on case-insensitive filesystems.
+
 **Verification boundary:** Hosted Linux checks cover focused tests, frontend builds, real Chromium captures and 10 mocked browser scenarios. Live model conversations, real external-service integration, broader interruption/recovery coverage, Windows / macOS runtime and physical mobile-device testing remain unverified.
 
 ## Next upgrades
@@ -463,7 +467,7 @@ These are pending plans, including the original roadmap. Bug fixes above do not 
 - [ ] **Deployment toward an online demo:** Continue from the improved setup guide with safe configuration templates, a minimal backend startup path and optional-service isolation. A hosted live demo is still pending.
 - [ ] **CI coverage:** Keep the self-contained test selection current as features grow; add safely isolated integration jobs only when their service setup is available.
 - [ ] **Live conversation screenshots:** Capture verified model-backed chat and Manus question/Todo flows, clearly separated from the completed landing-page and synthetic-response chat previews.
-- [ ] **Cross-platform validation:** Run the documented commands on Windows and macOS, recording versions and failures.
+- [ ] **Cross-platform validation:** Verify the newly configured native Windows/macOS checks, then test full service startup separately.
 - [ ] **Browser and service coverage:** Extend the verified mocked Chromium flows to real model/service integration and broader navigation, interruption and recovery cases.
 - [ ] **ToolTape isolation:** Add per-session separation and reviewed per-tool capture policies before expanding beyond the current single serial session.
 - [ ] **Session durability:** Define expiration and persistence for pending Manus tasks, including safe restart recovery.
