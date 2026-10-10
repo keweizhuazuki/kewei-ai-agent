@@ -8,13 +8,15 @@
             title="LoveApp"
             subtitle="恋爱顾问（支持图片）"
             :active="store.activeApp === 'love'"
-            @click="store.setActiveApp('love')"
+            :disabled="sending"
+            @click="switchApp('love')"
           />
           <AppPill
             title="Manus"
             subtitle="通用 Agent（SSE）"
             :active="store.activeApp === 'manus'"
-            @click="store.setActiveApp('manus')"
+            :disabled="sending"
+            @click="switchApp('manus')"
           />
           <AppPill
             title="ExerciseApp"
@@ -202,7 +204,7 @@ watch(
   () => route.query.app,
   (app) => {
     if (app === 'manus' || app === 'love') {
-      store.setActiveApp(app)
+      switchApp(app)
     }
   },
   { immediate: true },
@@ -215,6 +217,7 @@ watch(
       store.setChatMode('sse')
     }
   },
+  { immediate: true },
 )
 
 watch(
@@ -226,6 +229,13 @@ watch(
     }
   },
 )
+
+function switchApp(app) {
+  if (sending.value || app === store.activeApp) return
+  clearPendingQuestions()
+  pinnedTodo.value = null
+  store.setActiveApp(app)
+}
 
 function switchChat() {
   if (sending.value) return

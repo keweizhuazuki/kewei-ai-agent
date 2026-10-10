@@ -122,6 +122,8 @@ async function createFixture(viewport, scenario) {
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(`${baseUrl}/chat?app=manus`, { waitUntil: 'domcontentloaded' })
   await page.getByRole('heading', { name: '会话中心', exact: true }).waitFor()
+  assert.equal(await page.locator('.mode-box select').inputValue(), 'sse')
+  assert.equal(await page.locator('.mode-box select option:checked').innerText(), '流式 sse（Manus）')
   return { context, page, getCalls, postCalls, errors, firstRequest, releaseInitial }
 }
 
@@ -145,6 +147,8 @@ async function continueFlow(fixture, viewport) {
   await bounded(fixture.firstRequest.promise)
   assert.equal(await page.getByRole('button', { name: '新建 chatId', exact: true }).isDisabled(), true)
   assert.equal(await page.locator('.top-actions select').isDisabled(), true)
+  assert.equal(await page.getByRole('button', { name: /^LoveApp/ }).isDisabled(), true)
+  assert.equal(await page.getByRole('button', { name: /^Manus/ }).isDisabled(), true)
   fixture.releaseInitial.resolve()
   await questionPause(page)
   const continueButton = page.getByRole('button', { name: '继续执行', exact: true })
@@ -166,6 +170,11 @@ async function continueFlow(fixture, viewport) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   assert.equal(overflow, false, `${viewport.name}: chat horizontal overflow`)
   if (capture) {
+    await page.evaluate(() => new Promise((resolve) => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    }))
+    assert.equal(await page.evaluate(() => window.scrollY), 0)
     await page.screenshot({ path: `${output}chat-${viewport.name}-preview.png`, fullPage: true, animations: 'disabled' })
   }
 }
@@ -204,6 +213,25 @@ async function retryFlow(fixture) {
   assert.equal(fixture.postCalls.length, 0)
 }
 
+async function switchAppFlow(fixture) {
+  const { page } = fixture
+  await send(page, '切换应用前的任务')
+  await questionPause(page)
+  await page.locator('#q_1').selectOption('PDF')
+  await page.getByRole('button', { name: /^Manus/ }).click()
+  assert.equal(await page.locator('#q_1').inputValue(), 'PDF')
+  await page.getByRole('button', { name: /^LoveApp/ }).click()
+  await page.locator('.question-panel').waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('.todo-pin').count(), 0)
+  assert.equal(await page.getByPlaceholder(promptPlaceholder).isEnabled(), true)
+  await page.locator('.mode-box select').selectOption('sync')
+  await page.getByRole('button', { name: /^Manus/ }).click()
+  assert.equal(await page.locator('.mode-box select').inputValue(), 'sse')
+  assert.equal(await page.locator('.question-panel').count(), 0)
+  assert.equal(fixture.getCalls.length, 1)
+  assert.equal(fixture.postCalls.length, 0)
+}
+
 try {
   let serverReady = false
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -224,11 +252,12 @@ try {
     { name: 'desktop', width: 1440, height: 1000, mobile: false },
     { name: 'mobile', width: 390, height: 844, mobile: true },
   ]) {
-    for (const scenario of ['continue', 'new', 'switch', 'retry']) {
+    for (const scenario of ['continue', 'new', 'switch', 'retry', 'app']) {
       const fixture = await createFixture(viewport, scenario)
       try {
         if (scenario === 'continue') await continueFlow(fixture, viewport)
         else if (scenario === 'retry') await retryFlow(fixture)
+        else if (scenario === 'app') await switchAppFlow(fixture)
         else await switchFlow(fixture, scenario)
         assert.deepEqual(fixture.errors, [])
         console.log(`PASS ${viewport.name}: ${scenario}`)
