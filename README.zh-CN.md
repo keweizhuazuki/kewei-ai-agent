@@ -461,7 +461,7 @@ kewei-ai-agent/
 
 **ToolTape 验证：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。相同后端/profile 范围也已通过[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505)。
 
-**本次 ToolTape 加固修订：** 将可选集成固定到 `442ce89e73cb67fcc294021de739a6de8ccc6128`，适配器 API 不变。Linux 本地干净 profile 构建在 **384 MiB 堆限制下通过 24 项测试及打包**。新增的两项适配器回归均在旧版本失败、新版本通过：3 种伪装的凭据字段名即使纳入白名单也不写入记录；超过记录预算的 13 MiB 白名单 JSON 输入在真实委托工具执行前即被拒绝。新固定版本的托管验证仍待完成；上方初次 `7d08b44` / 22 项测试记录保留为历史依据。
+**ToolTape 加固（[#18](https://github.com/keweizhuazuki/kewei-ai-agent/pull/18)，`4b93bf8`）：** 将可选集成固定到 `442ce89e73cb67fcc294021de739a6de8ccc6128`，适配器 API 不变。Linux 本地干净 profile 构建在 **384 MiB 堆限制下通过 24 项测试及打包**。新增的两项适配器回归均在旧版本失败、新版本通过：3 种伪装的凭据字段名即使纳入白名单也不写入记录；超过记录预算的 13 MiB 白名单 JSON 输入在真实委托工具执行前即被拒绝。相同的 24 项 profile 测试/打包及全部跨平台、前端检查均已通过[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38036372506)。上方初次 `7d08b44` / 22 项测试记录保留为历史依据。
 
 **前端验证：** 修复续跑 Todo 解码、会话/应用切换后残留问题、Manus 回复模式初始化与回复期间切换问题。提交 `d23f0ab` 的[运行 38035118112](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112)已通过 **90 项后端测试、22 项 ToolTape profile 测试及打包、43 项 Node 测试、前端构建和全部 10 个 Chromium 场景**。桌面与移动会话截图已实际检查；浏览器响应使用合成 API/SSE 数据，不是真实模型输出。
 
