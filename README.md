@@ -23,6 +23,24 @@ Real landing-page captures of the built Vue frontend at commit `3027eeb`, from [
 
 </details>
 
+### Manus chat and completed Todo
+
+Real full-page Chromium captures after the question/continue and failure/retry flow at commit `d23f0ab`, from [the verified browser run](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112). API/SSE responses are intercepted synthetic fixtures, **not live model output**. The browser viewports are 1440 × 1000 and 390 × 844; these captures do not validate physical mobile devices.
+
+<details>
+<summary>Desktop chat · full-page capture, 1440 × 1150</summary>
+
+![Manus desktop chat with a completed Todo after a synthetic continuation and retry](docs/images/chat-desktop-preview.png)
+
+</details>
+
+<details>
+<summary>Mobile chat · full-page capture, 390 × 1583</summary>
+
+<img src="docs/images/chat-mobile-preview.png" width="390" alt="Manus chat and completed Todo in a mobile-sized Chromium viewport using synthetic API responses" />
+
+</details>
+
 ## Features
 
 | Feature | Current implementation and boundaries |
@@ -176,7 +194,7 @@ When the model calls the relevant tools:
 
 Tool use is model-driven. Manus pending questions and Todo snapshots are in-memory and cannot survive a backend restart. They are separate from file / MySQL / Redis chat memory.
 
-Creating or switching chats is disabled while a response is active. After a question pause, changing chats clears the old pending questions, answers and pinned Todo from the UI. Failed continuation preserves answers for retry in the same chat; successful continuation updates and archives the latest Todo state.
+Creating or switching chats and changing applications are disabled while a response is active. After a question pause, changing chats or applications clears the old pending questions, answers and pinned Todo from the UI. Manus initializes in SSE mode. Failed continuation preserves answers for retry in the same chat; successful continuation updates and archives the latest Todo state.
 
 ### API examples
 
@@ -350,7 +368,7 @@ npm run test:ui
 npm run test:ui -- --screenshots
 ```
 
-The second command also requests chat screenshots. The [browser suite](kewei-ai-agent-frontend/scripts/ui-flows.mjs) uses real Chromium with intercepted synthetic API/SSE responses: continuation with failure/retry and Todo completion, new chat, chat switching, and failed-send retry, each at desktop and mobile-sized viewports (**10 scenarios**). It needs no live backend or model. Hosted execution and chat screenshot review are still pending for this revision; these scenarios are not yet reported as passing.
+The second command also requests chat screenshots. The [browser suite](kewei-ai-agent-frontend/scripts/ui-flows.mjs) uses real Chromium with intercepted synthetic API/SSE responses: continuation with failure/retry and Todo completion, new chat, chat switching, failed-send retry, and application switching, each at desktop and mobile-sized viewports (**10 scenarios**). All 10 passed in [hosted CI at `d23f0ab`](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112); the resulting chat captures were visually reviewed and are included above. No live backend or model is involved.
 
 
 ## Architecture
@@ -424,14 +442,15 @@ Implemented changes are linked to their PRs and commits; pending hosted validati
 | Add isolated CI regression checks and automated UI capture | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
 | Add inspected desktop and mobile-viewport frontend previews to this guide | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
 | Add opt-in ToolTape recording/replay and correct Agent callback dispatch | [#15](https://github.com/keweizhuazuki/kewei-ai-agent/pull/15) · `74a73ad` |
+| Fix Manus continuation state, SSE-mode initialization and chat/app switching; add verified mocked browser flows | [#16](https://github.com/keweizhuazuki/kewei-ai-agent/pull/16) · `4542019`, `d23f0ab` |
 
 **ToolTape validation:** Added the opt-in ToolTape adapter and corrected `ToolCallAgent` dispatch to pass the available callbacks to Spring AI. Local Linux checks passed **90 default-build regression tests** and **22 profile-enabled tests plus packaging**, using pinned ToolTape revision `7d08b44`. A clean default build contains no ToolTape core or adapter classes. The [synthetic Agent regression](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java) exercises `think → act` with a deterministic local model stub and verifies replay causes no second tool side effect. The same backend/profile scope also passed in [hosted CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505).
 
-**Current frontend revision:** Fixed Todo decoding during continuation, cleared stale pending questions on chat changes, initialized Manus reply mode correctly, and blocked chat/application changes while a response is active. All **43 Node tests** and the frontend build passed locally; the six added component-state regressions fail against the prior implementation. Added the 10-scenario mocked browser suite above; hosted browser results and chat screenshots remain pending.
+**Frontend validation:** Fixed Todo decoding during continuation, stale questions after chat/application changes, Manus reply-mode initialization and active-response switching. [Run 38035118112](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112) at `d23f0ab` passed **90 backend tests, 22 ToolTape-profile tests with packaging, 43 Node tests, the frontend build and all 10 Chromium scenarios**. Desktop and mobile chat captures were visually reviewed. Browser responses use synthetic API/SSE fixtures, not a live model.
 
 **Verified CI run:** [Run 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) passed 89 focused backend tests, 33 frontend tests, the production frontend build and desktop/mobile-viewport screenshot capture. The [workflow](.github/workflows/ci.yml) needs no live-service credentials. The inspected screenshots are now included above.
 
-**Verification boundary:** Hosted Linux checks cover focused tests, the frontend build and real Chromium UI captures. Live model conversations, full external-service/browser-flow integration, Windows / macOS runtime and physical mobile-device testing remain unverified.
+**Verification boundary:** Hosted Linux checks cover focused tests, frontend builds, real Chromium captures and 10 mocked browser scenarios. Live model conversations, real external-service integration, broader interruption/recovery coverage, Windows / macOS runtime and physical mobile-device testing remain unverified.
 
 ## Next upgrades
 
@@ -443,9 +462,9 @@ These are pending plans, including the original roadmap. Bug fixes above do not 
 - [ ] **Domain-specific agents and MCP:** Split suitable task domains into independent agents or MCP services.
 - [ ] **Deployment toward an online demo:** Continue from the improved setup guide with safe configuration templates, a minimal backend startup path and optional-service isolation. A hosted live demo is still pending.
 - [ ] **CI coverage:** Keep the self-contained test selection current as features grow; add safely isolated integration jobs only when their service setup is available.
-- [ ] **Live conversation screenshots:** Capture verified model-backed chat and Manus question/Todo flows, clearly separated from the completed frontend-only previews.
+- [ ] **Live conversation screenshots:** Capture verified model-backed chat and Manus question/Todo flows, clearly separated from the completed landing-page and synthetic-response chat previews.
 - [ ] **Cross-platform validation:** Run the documented commands on Windows and macOS, recording versions and failures.
-- [ ] **Browser and service coverage:** Validate the new 10-scenario mocked Chromium suite in hosted CI and review its chat captures, then extend coverage to real model/service flows, interruptions and retries.
+- [ ] **Browser and service coverage:** Extend the verified mocked Chromium flows to real model/service integration and broader navigation, interruption and recovery cases.
 - [ ] **ToolTape isolation:** Add per-session separation and reviewed per-tool capture policies before expanding beyond the current single serial session.
 - [ ] **Session durability:** Define expiration and persistence for pending Manus tasks, including safe restart recovery.
 

@@ -23,6 +23,24 @@
 
 </details>
 
+### Manus 会话与已完成 Todo
+
+以下是提交 `d23f0ab` 在[已验证的浏览器运行](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112)中，完成提问续跑与失败重试后的真实 Chromium 整页截图。API/SSE 响应来自拦截后的合成测试数据，**不是真实模型输出**。浏览器视口为 1440 × 1000 和 390 × 844，不代表手机实机验证。
+
+<details>
+<summary>桌面会话 · 整页截图 1440 × 1150</summary>
+
+![Manus 桌面会话在合成续跑与重试后的已完成 Todo](docs/images/chat-desktop-preview.png)
+
+</details>
+
+<details>
+<summary>移动会话 · 整页截图 390 × 1583</summary>
+
+<img src="docs/images/chat-mobile-preview.png" width="390" alt="移动尺寸 Chromium 视口中使用合成 API 响应的 Manus 会话与已完成 Todo" />
+
+</details>
+
 ## 能做什么
 
 | 能力 | 当前实现与边界 |
@@ -176,7 +194,7 @@ Windows PowerShell：
 
 工具是否被调用由模型决定。Manus 的待回答状态和 Todo 快照保存在进程内存中，重启后端不能恢复未完成的任务；它们与文件 / MySQL / Redis 聊天记忆是两套机制。
 
-回复进行中会禁用新建与切换会话。暂停等待补充信息后，切换会话会清除界面中旧的问题、答案与置顶 Todo。续跑失败会保留答案，便于在同一会话重试；成功续跑会更新并归档最新 Todo 状态。
+回复进行中会禁用新建、切换会话与切换应用。暂停等待补充信息后，切换会话或应用会清除界面中旧的问题、答案与置顶 Todo；Manus 会初始化为 SSE 模式。续跑失败会保留答案，便于在同一会话重试；成功续跑会更新并归档最新 Todo 状态。
 
 ### API 示例
 
@@ -352,7 +370,7 @@ npm run test:ui
 npm run test:ui -- --screenshots
 ```
 
-第二条命令同时请求生成聊天截图。[浏览器测试](kewei-ai-agent-frontend/scripts/ui-flows.mjs)使用真实 Chromium，但拦截 API/SSE 并返回合成数据：覆盖续跑失败重试与 Todo 完成、新建会话、切换会话、切换应用、发送失败后重试五类场景，各在桌面与移动尺寸视口执行，共 **10 个场景**，无需真实后端或模型。本次修订的托管执行与聊天截图检查仍待完成，尚不宣称这些场景已通过。
+第二条命令同时请求生成聊天截图。[浏览器测试](kewei-ai-agent-frontend/scripts/ui-flows.mjs)使用真实 Chromium，但拦截 API/SSE 并返回合成数据：覆盖续跑失败重试与 Todo 完成、新建会话、切换会话、发送失败后重试、切换应用五类场景，各在桌面与移动尺寸视口执行，共 **10 个场景**。这些场景已在提交 `d23f0ab` 的[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112)中全部通过，生成的聊天截图也已实际检查并收录在上方；不涉及真实后端或模型。
 
 
 ## 架构与代码导航
@@ -426,14 +444,15 @@ kewei-ai-agent/
 | 增加隔离的 CI 回归检查与自动界面截图 | [#13](https://github.com/keweizhuazuki/kewei-ai-agent/pull/13) · `3027eeb` |
 | 完成并展示首批桌面与移动视口前端真实截图 | [#14](https://github.com/keweizhuazuki/kewei-ai-agent/pull/14) · `670ec50` |
 | 增加可选 ToolTape 录制/回放，修正 Agent 回调调度 | [#15](https://github.com/keweizhuazuki/kewei-ai-agent/pull/15) · `74a73ad` |
+| 修复 Manus 续跑状态、SSE 模式初始化与会话/应用切换，补充已验证的模拟浏览器流程 | [#16](https://github.com/keweizhuazuki/kewei-ai-agent/pull/16) · `4542019`, `d23f0ab` |
 
 **ToolTape 验证：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。相同后端/profile 范围也已通过[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505)。
 
-**本次前端修订：** 修复续跑 Todo 解码、切换会话后残留的问题，初始化 Manus 回复模式，并在回复进行中禁止切换会话或应用。Linux 本地已通过全部 **43 项 Node 测试**和前端构建；新增的 6 项组件状态回归在旧实现上均会失败。已补充上述 10 场景模拟浏览器测试，托管浏览器结果与聊天截图仍待完成。
+**前端验证：** 修复续跑 Todo 解码、会话/应用切换后残留问题、Manus 回复模式初始化与回复期间切换问题。提交 `d23f0ab` 的[运行 38035118112](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112)已通过 **90 项后端测试、22 项 ToolTape profile 测试及打包、43 项 Node 测试、前端构建和全部 10 个 Chromium 场景**。桌面与移动会话截图已实际检查；浏览器响应使用合成 API/SSE 数据，不是真实模型输出。
 
 **已验证的 CI 运行：** [运行 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)已通过 89 项核心后端测试、33 项前端测试、前端生产构建与桌面/移动视口截图。[工作流](.github/workflows/ci.yml)无需真实服务凭据，已检查的截图现已收录在上方。
 
-**验证边界：** 托管 Linux 环境已验证核心测试、前端构建与真实 Chromium 界面截图；真实模型会话、完整外部服务与浏览器流程联调、Windows/macOS 运行和手机实机验证仍未完成。
+**验证边界：** 托管 Linux 环境已验证核心测试、前端构建、真实 Chromium 截图及 10 个模拟浏览器场景；真实模型会话、实际外部服务联调、更广泛的中断恢复、Windows/macOS 运行和手机实机验证仍未完成。
 
 ## 下一步升级
 
@@ -445,9 +464,9 @@ kewei-ai-agent/
 - [ ] **领域独立 Agent 与 MCP：** 按适合的任务域继续拆分独立 Agent 或 MCP 服务。
 - [ ] **部署与在线演示：** 在已有部署说明上补充安全配置模板、最小后端启动路径与可选服务隔离；实际托管的在线演示仍待完成。
 - [ ] **CI 覆盖：** 随功能增长维护无需外部服务的测试清单；服务环境就绪后，再增加安全隔离的联调任务。
-- [ ] **真实会话截图：** 验证并截取模型对话、Manus 提问与 Todo 流程，与已完成的纯前端预览明确区分。
+- [ ] **真实会话截图：** 验证并截取模型对话、Manus 提问与 Todo 流程，与已完成的首页及合成响应聊天预览明确区分。
 - [ ] **跨平台验证：** 在 Windows、macOS 实测文档命令，记录环境版本与失败项。
-- [ ] **浏览器与服务覆盖：** 在托管 CI 验证新增的 10 场景模拟 Chromium 测试并检查聊天截图，再扩展真实模型/服务流程、中断与重试。
+- [ ] **浏览器与服务覆盖：** 在已验证的模拟 Chromium 流程上扩展真实模型/服务联调，以及更广泛的导航、中断与恢复场景。
 - [ ] **ToolTape 隔离：** 在当前单一串行会话之外扩展前，增加会话级隔离与经过审查的逐工具捕获策略。
 - [ ] **会话持久化：** 明确待执行 Manus 任务的过期与持久化方案，支持安全重启恢复。
 
