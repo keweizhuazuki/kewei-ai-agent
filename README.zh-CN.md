@@ -454,7 +454,7 @@ kewei-ai-agent/
 
 **已验证的 CI 运行：** [运行 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809)已通过 89 项核心后端测试、33 项前端测试、前端生产构建与桌面/移动视口截图。[工作流](.github/workflows/ci.yml)无需真实服务凭据，已检查的截图现已收录在上方。
 
-**本次跨平台修订：** [工作流](.github/workflows/ci.yml)新增只读的 Windows/PowerShell 与 macOS/Bash 兼容性检查。原生 Wrapper 执行和报告仍待首次托管运行确认；不区分大小写的文件系统可能跳过 PDF 大小写冲突测试。
+**本次跨平台修订：** [工作流](.github/workflows/ci.yml)新增只读的 Windows/PowerShell 与 macOS/Bash 兼容性检查。首次托管运行已通过 macOS 测试/构建，并发现 Windows 测试中写死 Unix 路径的断言。断言现已使用真实临时目录；同时修复提示词输入流在成功或失败后未关闭的问题，3 项针对性测试已在本地通过。扩展后的 92 项后端测试等待下一次跨平台运行；不区分大小写的文件系统可能跳过 PDF 大小写冲突测试。
 
 **验证边界：** 托管 Linux 环境已验证核心测试、前端构建、真实 Chromium 截图及 10 个模拟浏览器场景；真实模型会话、实际外部服务联调、更广泛的中断恢复、Windows/macOS 运行和手机实机验证仍未完成。
 

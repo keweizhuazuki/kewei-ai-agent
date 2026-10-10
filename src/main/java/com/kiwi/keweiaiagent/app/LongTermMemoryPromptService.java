@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -29,8 +30,8 @@ public class LongTermMemoryPromptService {
     }
 
     public String buildPrompt() {
-        try {
-            String template = StreamUtils.copyToString(promptResource.getInputStream(), StandardCharsets.UTF_8);
+        try (InputStream inputStream = promptResource.getInputStream()) {
+            String template = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
             return template.replace("{{MEMORIES_ROOT_DIRECTORY}}", memoriesRootPath.toString());
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to load long-term memory prompt", e);

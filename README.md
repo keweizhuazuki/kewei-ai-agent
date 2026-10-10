@@ -452,7 +452,7 @@ Implemented changes are linked to their PRs and commits; pending hosted validati
 
 **Verified CI run:** [Run 38033736809](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38033736809) passed 89 focused backend tests, 33 frontend tests, the production frontend build and desktop/mobile-viewport screenshot capture. The [workflow](.github/workflows/ci.yml) needs no live-service credentials. The inspected screenshots are now included above.
 
-**Current platform revision:** Added read-only Windows/PowerShell and macOS/Bash compatibility jobs to the [workflow](.github/workflows/ci.yml). Native wrapper execution and reports remain to be verified by the first hosted run; the PDF case-collision test may skip on case-insensitive filesystems.
+**Current platform revision:** Added read-only Windows/PowerShell and macOS/Bash compatibility jobs to the [workflow](.github/workflows/ci.yml). The first hosted run passed macOS tests/builds and exposed a Unix-only test assertion on Windows. The assertion now uses a real temporary path; prompt streams are also closed on success or failure, with 3 focused tests passing locally. The expanded 92-test backend selection awaits the next platform run. The PDF case-collision test may skip on case-insensitive filesystems.
 
 **Verification boundary:** Hosted Linux checks cover focused tests, frontend builds, real Chromium captures and 10 mocked browser scenarios. Live model conversations, real external-service integration, broader interruption/recovery coverage, Windows / macOS runtime and physical mobile-device testing remain unverified.
 
