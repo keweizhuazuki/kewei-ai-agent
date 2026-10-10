@@ -5,9 +5,12 @@ import org.springaicommunity.agent.tools.AskUserQuestionTool;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Manus 会话存储组件，负责保存会话状态、待答问题和待办快照。
@@ -85,9 +88,10 @@ public class ManusSessionStore {
      * 保存等待用户回答的问题列表。
      */
     public void savePendingQuestions(String chatId, List<AskUserQuestionTool.Question> questions) {
+        List<AskUserQuestionTool.Question> rawQuestions = List.copyOf(questions);
         List<PendingQuestion> pendingQuestions = new ArrayList<>();
-        for (int i = 0; i < questions.size(); i++) {
-            AskUserQuestionTool.Question question = questions.get(i);
+        for (int i = 0; i < rawQuestions.size(); i++) {
+            AskUserQuestionTool.Question question = rawQuestions.get(i);
             List<PendingOption> options = question.options() == null ? List.of() : question.options().stream()
                     .map(option -> new PendingOption(option.label(), option.description()))
                     .toList();
@@ -99,27 +103,39 @@ public class ManusSessionStore {
                     options
             ));
         }
+        List<PendingQuestion> questionSnapshot = List.copyOf(pendingQuestions);
         sessions.computeIfPresent(chatId, (key, session) ->
-                new ManusSession(key, session.initialPrompt(), session.agent(), questions, pendingQuestions, session.pendingAnswers(), session.todoSnapshot()));
+                new ManusSession(key, session.initialPrompt(), session.agent(), rawQuestions, questionSnapshot, session.pendingAnswers(), session.todoSnapshot()));
     }
 
     /**
      * 记录用户提交的答案。
      */
     public void submitAnswers(String chatId, Map<String, String> answers) {
+        Map<String, String> answerSnapshot = answers == null ? null
+                : Collections.unmodifiableMap(new HashMap<>(answers));
         sessions.computeIfPresent(chatId, (key, session) ->
-                new ManusSession(key, session.initialPrompt(), session.agent(), session.rawPendingQuestions(), session.pendingQuestions(), answers, session.todoSnapshot()));
+                new ManusSession(key, session.initialPrompt(), session.agent(), session.rawPendingQuestions(), session.pendingQuestions(), answerSnapshot, session.todoSnapshot()));
     }
 
     /**
      * 提取并消费用户答案，转换为原始问题对应的映射。
      */
     public Map<String, String> consumeAnswers(String chatId) {
-        ManusSession session = sessions.get(chatId);
-        if (session == null || session.pendingAnswers() == null) {
+        // 读取与清空必须原子执行，避免重复消费或覆盖同时发生的会话更新。
+        AtomicReference<ManusSession> consumedSession = new AtomicReference<>();
+        sessions.computeIfPresent(chatId, (key, session) -> {
+            if (session.pendingAnswers() == null) {
+                return session;
+            }
+            consumedSession.set(session);
+            return new ManusSession(key, session.initialPrompt(), session.agent(), session.rawPendingQuestions(),
+                    session.pendingQuestions(), null, session.todoSnapshot());
+        });
+        ManusSession session = consumedSession.get();
+        if (session == null) {
             return null;
         }
-        sessions.put(chatId, new ManusSession(chatId, session.initialPrompt(), session.agent(), session.rawPendingQuestions(), session.pendingQuestions(), null, session.todoSnapshot()));
         if (session.pendingQuestions() == null || session.rawPendingQuestions() == null) {
             return session.pendingAnswers();
         }
@@ -146,12 +162,14 @@ public class ManusSessionStore {
      * 保存并广播当前会话的待办快照。
      */
     public void saveTodoSnapshot(String chatId, TodoSnapshot todoSnapshot) {
+        TodoSnapshot snapshot = todoSnapshot == null ? null
+                : new TodoSnapshot(todoSnapshot.items() == null ? null : List.copyOf(todoSnapshot.items()));
         sessions.computeIfPresent(chatId, (key, session) ->
-                new ManusSession(key, session.initialPrompt(), session.agent(), session.rawPendingQuestions(), session.pendingQuestions(), session.pendingAnswers(), todoSnapshot));
+                new ManusSession(key, session.initialPrompt(), session.agent(), session.rawPendingQuestions(), session.pendingQuestions(), session.pendingAnswers(), snapshot));
         List<TodoSnapshotListener> listeners = todoSnapshotListeners.get(chatId);
         if (listeners != null) {
             for (TodoSnapshotListener listener : List.copyOf(listeners)) {
-                listener.onTodoSnapshot(todoSnapshot);
+                listener.onTodoSnapshot(snapshot);
             }
         }
     }
