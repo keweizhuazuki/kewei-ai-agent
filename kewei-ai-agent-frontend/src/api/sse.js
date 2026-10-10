@@ -1,7 +1,7 @@
 import { API_BASE_URL } from './constants'
 
 function buildUrl(path, params = {}) {
-  const url = new URL(`${API_BASE_URL}${path}`)
+  const url = new URL(`${API_BASE_URL}${path}`, globalThis.location?.href)
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, String(value))

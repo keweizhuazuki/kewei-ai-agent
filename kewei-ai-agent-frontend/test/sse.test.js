@@ -279,3 +279,25 @@ test('fetch SSE keeps POST JSON and AbortSignal request options', async () => {
   assert.equal(harness.request.init.headers['Content-Type'], 'application/json')
   assert.deepEqual(JSON.parse(harness.request.init.body), { chatId: 'chat-1', answers: { q_1: 'A' } })
 })
+
+for (const [apiBase, expected] of [
+  ['/api', 'https://example.test/api/ai/manus/chat'],
+  ['https://backend.test/api', 'https://backend.test/api/ai/manus/chat'],
+]) {
+  test(`EventSource supports API base ${apiBase} without losing query parameters`, () => {
+    let openedUrl
+    const { openSSE } = loadSSE({
+      API_BASE_URL: apiBase,
+      location: { href: 'https://example.test/chat?previous=1' },
+      EventSource: class {
+        constructor(url) { openedUrl = url }
+        close() {}
+      },
+    })
+    const stream = openSSE({ path: '/ai/manus/chat', params: { message: '你好 & hello', chatId: 'demo' } })
+    assert.equal(openedUrl.origin + openedUrl.pathname, expected)
+    assert.equal(openedUrl.searchParams.get('message'), '你好 & hello')
+    assert.equal(openedUrl.searchParams.get('chatId'), 'demo')
+    stream.close()
+  })
+}
