@@ -416,6 +416,7 @@ npm run dev
 ```bash
 cd kewei-ai-agent-frontend
 npm install
+npm test
 npm run build
 ```
 

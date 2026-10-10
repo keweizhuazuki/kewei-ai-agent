@@ -23,19 +23,33 @@ export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessa
     es.close()
   }
 
+  const finish = (data) => {
+    if (done || closed) return
+    done = true
+    close()
+    onDone?.(data)
+  }
+
+  const fail = (error) => {
+    if (done || closed) return
+    done = true
+    close()
+    onError?.(error)
+  }
+
   const handleChunk = (text) => {
     if (done || closed) return
     if (text === '[DONE]') {
-      done = true
-      onDone?.(text)
-      close()
+      finish(text)
       return
     }
     hasChunk = true
     onMessage?.(text)
   }
 
-  es.onopen = () => onOpen?.()
+  es.onopen = () => {
+    if (!done && !closed) onOpen?.()
+  }
 
   if (withNamedEvents) {
     es.addEventListener('message', (event) => {
@@ -51,10 +65,7 @@ export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessa
       onTodo?.(event.data || '')
     })
     es.addEventListener('done', (event) => {
-      if (done || closed) return
-      done = true
-      onDone?.(event.data || '[DONE]')
-      close()
+      finish(event.data || '[DONE]')
     })
   } else {
     es.onmessage = (event) => {
@@ -64,15 +75,17 @@ export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessa
 
   es.onerror = (event) => {
     if (done || closed) return
-    // 部分后端会在发送完最后一个 chunk 后直接断开，而不是发送 done 事件
-    if (hasChunk || hasQuestion) {
-      done = true
-      onDone?.('[CLOSED]')
-      close()
+    // 后端的命名 error 事件也会触发 onerror，不能当作正常断流。
+    if (typeof event?.data === 'string') {
+      fail(event)
       return
     }
-    onError?.(event)
-    close()
+    // 普通 Flux 流没有 done 事件；命名事件流只能在 done 或待回答时结束。
+    if (hasQuestion || (!withNamedEvents && hasChunk)) {
+      finish('[CLOSED]')
+      return
+    }
+    fail(event)
   }
 
   return {
@@ -84,12 +97,26 @@ export function openSSE({ path, params, withNamedEvents = false, onOpen, onMessa
 
 export function openFetchSSE({ path, method = 'POST', body, onOpen, onMessage, onQuestion, onTodo, onDone, onError }) {
   let closed = false
+  let reader = null
   const controller = new AbortController()
 
   const close = () => {
     if (closed) return
     closed = true
     controller.abort()
+    if (reader) reader.cancel().catch(() => {})
+  }
+
+  const finish = (data) => {
+    if (closed) return
+    close()
+    onDone?.(data)
+  }
+
+  const fail = (error) => {
+    if (closed) return
+    close()
+    onError?.(error)
   }
 
   const run = async () => {
@@ -104,58 +131,87 @@ export function openFetchSSE({ path, method = 'POST', body, onOpen, onMessage, o
         signal: controller.signal,
       })
 
+      if (closed) {
+        await response.body?.cancel()
+        return
+      }
       if (!response.ok || !response.body) {
         throw new Error('SSE 请求失败')
       }
 
+      reader = response.body.getReader()
       onOpen?.()
-      const reader = response.body.getReader()
+      if (closed) return
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
       let eventName = 'message'
+      let dataLines = []
+      let hasQuestion = false
+
+      const dispatchEvent = () => {
+        const name = eventName
+        const data = dataLines.join('\n')
+        const hasData = dataLines.length > 0
+        eventName = 'message'
+        dataLines = []
+        if (!hasData) return
+
+        if (name === 'error') {
+          fail(new Error(data || 'SSE 请求失败'))
+        } else if (name === 'done' || data === '[DONE]') {
+          finish(data || '[DONE]')
+        } else if (name === 'question') {
+          hasQuestion = true
+          onQuestion?.(data)
+        } else if (name === 'todo') {
+          onTodo?.(data)
+        } else {
+          onMessage?.(data)
+        }
+      }
+
+      const processLines = (atEnd = false) => {
+        while (!closed) {
+          const separator = /\r\n|\r|\n/.exec(buffer)
+          if (!separator) return
+          // CRLF 可能被拆到两个网络 chunk 中，先保留末尾的 CR。
+          if (!atEnd && separator[0] === '\r' && separator.index === buffer.length - 1) return
+          const line = buffer.slice(0, separator.index)
+          buffer = buffer.slice(separator.index + separator[0].length)
+          if (!line) {
+            dispatchEvent()
+            continue
+          }
+          const colon = line.indexOf(':')
+          const field = colon < 0 ? line : line.slice(0, colon)
+          let value = colon < 0 ? '' : line.slice(colon + 1)
+          if (value.startsWith(' ')) value = value.slice(1)
+          if (field === 'event') eventName = value
+          if (field === 'data') dataLines.push(value)
+        }
+      }
 
       while (!closed) {
         const { value, done } = await reader.read()
+        if (closed) return
         if (done) {
-          onDone?.('[DONE]')
-          close()
+          buffer += decoder.decode()
+          processLines(true)
+          if (closed) return
+          if (hasQuestion) {
+            finish('[DONE]')
+          } else {
+            fail(new Error('SSE 连接提前关闭，请重试'))
+          }
           return
         }
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const rawLine of lines) {
-          const line = rawLine.trimEnd()
-          if (!line) {
-            eventName = 'message'
-            continue
-          }
-          if (line.startsWith('event:')) {
-            eventName = line.slice(6).trim()
-            continue
-          }
-          if (!line.startsWith('data:')) {
-            continue
-          }
-          const data = line.slice(5).trim()
-          if (eventName === 'question') {
-            onQuestion?.(data)
-          } else if (eventName === 'todo') {
-            onTodo?.(data)
-          } else if (eventName === 'done' || data === '[DONE]') {
-            onDone?.(data || '[DONE]')
-            close()
-            return
-          } else {
-            onMessage?.(data)
-          }
-        }
+        processLines()
       }
     } catch (error) {
-      if (!closed) {
-        onError?.(error)
-      }
+      fail(error)
+    } finally {
+      reader?.releaseLock()
     }
   }
 
