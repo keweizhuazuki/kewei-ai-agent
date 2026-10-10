@@ -1,438 +1,323 @@
 # Kewei AI Agent
 
-一个基于 Spring Boot + Spring AI 的 AI Agent 学习型工程项目。  
-我把它当成一个 Spring AI 练习项目：从聊天、RAG、工具调用，到 MCP、多步任务、记忆机制和前后端联调，从底层理解 AI 大模型运用。
+基于 **Spring Boot + Spring AI + Vue 3** 的 AI Agent 实践项目。你可以在浏览器中体验恋爱场景对话、流式回复和多步任务，也可以从代码了解 RAG、工具调用、MCP、会话状态和长期记忆的实现。
 
-> 项目定位：学习项目，但按工程作品的标准去设计、实现和整理。  
-> 适合场景：练手、作为 Spring AI / AI Agent 实践模板继续扩展。  
-> 开发过程记录见：[PROCEDURES.md](PROCEDURES.md)
-> 贡献流程见：[CONTRIBUTING.md](CONTRIBUTING.md)
+项目面向学习、二次开发和本地演示。当前默认模型为 Ollama，完整后端需要配置模型、数据库及启用的 MCP 服务；前端可以独立启动预览。项目尚未提供生产环境所需的完整鉴权、限流与审计能力，不建议直接暴露到公网。
 
-## 我完成了什么
+[快速开始](#快速开始) · [使用示例](#使用示例) · [部署与多平台使用](#部署与多平台使用) · [测试](#测试) · [架构与代码导航](#架构与代码导航)
 
-从后端工程角度，这个项目重点体现的是：
+## 能做什么
 
-- 基于 Spring Boot + Spring AI 组织 AI 应用基础设施
-- 把聊天、RAG、Tools、MCP、Agent 等能力统一收敛到可复用的应用层
-- 处理多数据源、多模型 Bean、会话状态、异常包装、SSE 事件流这些工程细节
-- 为复杂任务设计了 Manus 多步执行链路，支持 TodoWrite、用户补充信息、任务续跑
-- 新增长期记忆工具层，让 Agent 能把跨会话稳定事实写入 `MEMORY.md` 和 typed markdown memory files
-- 将网页调研任务委派给 OpenClaw 独立执行代理，主应用负责任务拆解、工具路由和结果汇总
-- 完整的测试覆盖和前后端联调，保证了代码的可验证性，健壮性和可演示性
-
-## 技术栈
-
-`Java` `Spring Boot` `Spring AI` `Maven` `MyBatis-Plus` `MySQL` `Redis` `PostgreSQL / pgvector` `Ollama` `DashScope` `Vue 3` `SSE` `MCP` `OpenClaw`
-
-## 功能图
-
-| 模块 | 当前能力 |
+| 能力 | 当前实现与边界 |
 | --- | --- |
-| 模型接入 | DashScope、Ollama |
-| 对话能力 | 同步、流式、结构化输出、多模态图片对话 |
-| 会话记忆 | file / mysql / redis 可切换 |
-| 长期记忆 | `MEMORY.md` 索引、typed markdown memory files、六个 memory tools |
-| RAG | Markdown 文档加载、向量化、检索增强、关键词增强、状态过滤 |
-| Tools | 文件读写、网页搜索、网页抓取、资源下载、PDF 转图、邮件发送、时间查询、PPT 生成、长期记忆读写 |
-| MCP | 图片搜索 MCP Server、图片生成 MCP Server |
-| Agent | ReAct、多步 Tool Calling、终止机制、TodoWrite、AskUserQuestion、Skills 模式 |
-| Research | Spring AI 主控 + OpenClaw 调研执行代理 |
-| 前端联调 | 聊天界面、流式渲染、问题补充、Todo 进度展示 |
+| LoveApp 对话 | 同步 / SSE 流式回复、会话记忆、图片问答；图片理解取决于所用模型 |
+| Manus 多步任务 | 工具调用、TodoWrite 进度、AskUserQuestion 补充信息、回答后续跑 |
+| RAG | Markdown 文档加载、本地向量库 / pgvector、查询预处理、关键词增强与检索过滤；主要在应用层提供 |
+| 记忆 | file / MySQL / Redis 会话记忆；独立的 Markdown 长期记忆工具 |
+| 工具 | 文件读写、资源下载、PDF 转图、PPT 生成、时间查询、邮件发送；外部服务须自行配置 |
+| 扩展 | 图片搜索 / 图片生成 MCP 子项目；通过 OpenClaw CLI 委派网页调研 |
+| 浏览器界面 | 首页 `/`、会话中心 `/chat`、健康检查与 API 调试 `/console`；ExerciseApp 为预留入口 |
 
-## 项目架构
+技术栈：Java 21、Spring Boot 4、Spring AI 2.0.0-M2、Maven、Vue 3、Vite 7、Pinia、Ollama、PostgreSQL / pgvector。仓库也保留 DashScope 依赖与示例，但默认排除了其自动配置；切换 Provider 需要同步检查配置及模型 Bean，不能只修改 API Key。
 
-```mermaid
-flowchart TB
-    subgraph Frontend["Frontend"]
-        UI["Vue Frontend"]
-    end
+## 快速开始
 
-    subgraph API["API Layer"]
-        AIC["AiController"]
-        HEAL["HealController"]
-        RESP["BaseResponse / ResponseBodyAdvice"]
-        EX["GlobalExceptionHandler"]
-    end
+### 1. 先运行前端界面
 
-    subgraph APP["Application Layer"]
-        LOVE["LoveApp"]
-        TODOAPP["TodoDemoApp"]
-    end
+只看界面不需要模型、数据库或 API Key。准备 Git、**Node.js 22.12+** 和 npm，在终端执行：
 
-    subgraph AGENT["Agent Layer"]
-        MSS["ManusSessionService"]
-        STORE["ManusSessionStore"]
-        MANUS["KeweiManus"]
-        TCA["ToolCallAgent"]
-        REACT["ReActAgent"]
-        STATE["AgentState / TodoSnapshot"]
-    end
-
-    subgraph INFRA["Infrastructure Layer"]
-        MODEL_CFG["AiModelPrimaryConfig"]
-        MODEL["DashScope / Ollama"]
-        MEMORY_CFG["ChatMemoryConfig"]
-        MEMORY["File / MySQL / Redis ChatMemory"]
-        LTM_CFG["LongTermMemoryConfig"]
-        LTM_PROMPT["LongTermMemoryPromptService"]
-        VECTOR_CFG["LoveAppVectorStoreConfig"]
-        DOCLOAD["LoveAppDocumentLoader"]
-        QUERY["QueryPreprocessor"]
-        RAG["pgvector / Retrieval Advisor Factory"]
-    end
-
-    subgraph EXT["Extensions"]
-        TOOL_REG["ToolRegistration"]
-        TOOLS["File / Search / Scrape / PDF / Mail / PPT / Time"]
-        MEMORY_TOOLS["Memory Tools"]
-        ASK["AskQuestion / TodoWrite / Terminate"]
-        MCP["MCP Clients"]
-        OPENCLAW_TOOL["OpenClawResearchTool"]
-        OPENCLAW["OpenClaw Research Agent"]
-    end
-
-    UI --> AIC
-    UI --> HEAL
-
-    AIC --> LOVE
-    AIC --> TODOAPP
-    AIC --> MSS
-    HEAL --> RESP
-    AIC --> RESP
-    AIC -. error .-> EX
-
-    LOVE --> MODEL_CFG
-    LOVE --> MEMORY_CFG
-    LOVE --> LTM_PROMPT
-    LOVE --> VECTOR_CFG
-    LOVE --> TOOL_REG
-    LOVE --> MCP
-    TODOAPP --> LOVE
-
-    MODEL_CFG --> MODEL
-    MEMORY_CFG --> MEMORY
-    LTM_CFG --> LTM_PROMPT
-    VECTOR_CFG --> DOCLOAD
-    VECTOR_CFG --> QUERY
-    VECTOR_CFG --> RAG
-
-    MSS --> STORE
-    MSS --> MANUS
-    STORE --> STATE
-    MANUS --> TCA
-    MANUS --> REACT
-    MANUS --> ASK
-    MANUS --> MEMORY_TOOLS
-    TCA --> TOOL_REG
-    TCA --> MCP
-    REACT --> TOOL_REG
-    REACT --> MCP
-
-    TOOL_REG --> TOOLS
-    TOOL_REG --> MEMORY_TOOLS
-    TOOL_REG --> ASK
-    TOOL_REG --> OPENCLAW_TOOL
-    OPENCLAW_TOOL --> OPENCLAW
+```bash
+git clone https://github.com/keweizhuazuki/kewei-ai-agent.git
+cd kewei-ai-agent/kewei-ai-agent-frontend
+npm ci
+npm run dev
 ```
 
-## 核心模块
+以上命令同样适用于 Windows PowerShell。打开终端打印的地址，默认是 `http://localhost:5173`。没有后端时可以浏览页面，但聊天、图片上传和健康检查不会成功。
 
-### 1. 应用层
+> 版本依据：锁定的 Vite 7 与 Vue 插件要求 Node `^20.19.0 || >=22.12.0`，Node 18 不满足要求。后端编译需要 **JDK 21**，仅安装 JRE 不够。仓库自带 Maven Wrapper，无需另装 Maven；首次使用会下载 Maven 和依赖。
 
-- [`src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java`](src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java)
-  统一封装文本对话、结构化输出、多模态、RAG、Tools、MCP、短期会话记忆和长期记忆 prompt 等能力。
-- [`src/main/java/com/kiwi/keweiaiagent/app/LongTermMemoryPromptService.java`](src/main/java/com/kiwi/keweiaiagent/app/LongTermMemoryPromptService.java)
-  加载长期记忆系统提示词，并把当前 memory 根目录注入给模型。
-- [`src/main/java/com/kiwi/keweiaiagent/controller/AiController.java`](src/main/java/com/kiwi/keweiaiagent/controller/AiController.java)
-  暴露同步、流式、SSE、图片上传、Agent 相关接口。
+### 2. 准备完整后端的依赖
 
-### 2. Agent 与会话状态
+| 依赖 | 何时需要 |
+| --- | --- |
+| Ollama | 默认聊天与 embedding；启动时就会加载文档并调用模型 |
+| PostgreSQL + pgvector | 默认后端的数据源与向量存储；当前不是开箱即用的可选模块 |
+| MCP 服务 | 默认配置已启用客户端，必须检查配置中的每个服务是否能启动 |
+| MySQL / Redis | 选择对应会话记忆实现时；初次运行可使用 `file` |
+| OpenClaw CLI | 网页调研及需要调研的 PPT 任务 |
+| SMTP / 图片服务凭据 | 使用发邮件、图片搜索或生成等对应功能时 |
 
-- [`src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java`](src/main/java/com/kiwi/keweiaiagent/agent/KeweiManus.java)
-  应用级多工具 Agent。
-- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java`](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java)
-  管理任务启动、续跑、问题补充和工具子集选择。
-- [`src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java`](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java)
-  保存运行状态、中间问题和 Todo 快照。
-
-### 3. RAG 与检索增强
-
-- [`src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java`](src/main/java/com/kiwi/keweiaiagent/rag/LoveAppVectorStoreConfig.java)
-- [`src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java`](src/main/java/com/kiwi/keweiaiagent/rag/PgVectorVectorLoadMarkdownConfig.java)
-- [`src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java`](src/main/java/com/kiwi/keweiaiagent/query/QueryPreprocessor.java)
-
-这部分负责文档加载、向量写入、查询预处理和检索增强配置。
-
-### 4. 记忆系统
-
-- [`src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java`](src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java)
-  装配 file / mysql / redis 三种短期会话记忆实现。
-- [`src/main/java/com/kiwi/keweiaiagent/config/LongTermMemoryConfig.java`](src/main/java/com/kiwi/keweiaiagent/config/LongTermMemoryConfig.java)
-  初始化长期记忆根目录和默认 `MEMORY.md` 索引文件。
-- [`src/main/java/com/kiwi/keweiaiagent/tools/MemoryToolSupport.java`](src/main/java/com/kiwi/keweiaiagent/tools/MemoryToolSupport.java)
-  为 memory tools 提供路径沙箱校验、文件读写、移动和删除能力。
-
-### 5. 工具与外部能力接入
-
-- [`src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java`](src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java)
-  统一管理工具注册。
-- [`src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java`](src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java)
-  研究任务委派给 OpenClaw。
-- `MemoryView` / `MemoryCreate` / `MemoryStrReplace` / `MemoryInsert` / `MemoryDelete` / `MemoryRename`
-  六个长期记忆工具，用于查看、创建、替换、插入、删除、重命名 memory 文件。
-- 文件读写与资源下载限定在各自输出目录内，支持相对路径子目录，拒绝绝对路径、越界路径和符号链接。
-- [`kewei-image-search-mcp-server`](kewei-image-search-mcp-server)
-  图片搜索 MCP 服务。
-- [`kewei-image-generation-mcp-server`](kewei-image-generation-mcp-server)
-  图片生成 MCP 服务。
-
-## 工程亮点
-
-### 1. 不只堆功能，也处理工程问题
-
-- 多 Provider 并存时的 Bean 优先级和装配冲突
-- ChatMemory 的 file / mysql / redis 切换
-- 短期 ChatMemory 与长期 Memory Tools 的职责分层
-- pgvector 数据源与主应用数据源分离
-- SSE 流式事件扩展到 `question` 和 `todo`
-- 全局异常处理和统一响应包装
-
-### 2. 不只做一次性 Demo，也考虑可验证性
-
-- 有较完整的单测和集成测试
-- Agent、Tools、RAG、Controller 都有对应测试代码
-- 支持前后端联调
-
-### 3. 不只接模型，也做能力编排
-
-- 基础聊天能力
-- 检索增强问答
-- 工具调用
-- MCP 服务编排
-- 多步 Agent 任务执行
-- TodoWrite 任务规划
-- AskUserQuestion 两段式用户补充信息
-- 外部研究代理协作
-
-## 我在这个项目里的收获
-
-- 更系统地理解了 Spring AI 在 Java 后端里的落地方式
-- 不只是“调用模型”，而是开始关注状态、上下文、工具、检索、短期/长期记忆和任务执行链路
-- 对 AI 应用工程化的认识更完整，包括接口设计、异常处理、流式输出、测试和模块边界
-
-## 项目结构
-
-```text
-kewei-ai-agent
-├── src/main/java/com/kiwi/keweiaiagent
-│   ├── agent
-│   ├── app
-│   ├── controller
-│   ├── rag
-│   ├── tools
-│   └── config
-├── src/main/resources/prompts
-├── src/test/java/com/kiwi/keweiaiagent
-├── kewei-ai-agent-frontend
-├── kewei-image-search-mcp-server
-├── kewei-image-generation-mcp-server
-└── PROCEDURES.md
-```
-
-## 关键能力使用方式
-
-### TodoWrite 任务规划
-
-- 最小 demo：`GET /ai/love_app/chat/sse_emitter?option=todo-demo&chatId=demo-1&message=帮我拆解一个三步任务`
-- Manus 集成：`GET /ai/manus/chat?chatId=manus-1&message=帮我完成一个复杂任务`
-- 当模型调用 `TodoWrite` 后，Manus SSE 流会增加 `event:todo`，前端可以实时展示当前 todo 快照。
-
-### OpenClaw 调研代理
-
-- 默认研究链路采用“Spring AI 主控 + OpenClaw 执行代理”分层。
-- Spring AI / Manus 负责任务拆解、工具选择、状态管理和最终汇总。
-- OpenClaw 负责网页调研执行，并通过 `openclaw agent --json` 返回最终调研文本。
-- 当前 PPT 与 research 类任务默认注入 `delegateResearchToOpenClaw`。
-
-### 长期记忆 Memory Tools
-
-- 长期记忆使用 `MEMORY.md` 作为索引，配合 typed markdown memory files 保存跨会话稳定事实。
-- 当前支持 `MemoryView`、`MemoryCreate`、`MemoryStrReplace`、`MemoryInsert`、`MemoryDelete`、`MemoryRename`。
-- memory tools 受 `app.long-term-memory.dir` 指定目录约束，默认写入 `tmp/agent-memory`。
-- memory tools 拒绝操作目录内的符号链接，避免通过链接读写记忆目录之外的文件。
-- 创建和重命名不会覆盖已有记忆；删除和重命名不能操作记忆根目录。
-- `LoveApp` 和 `KeweiManus` 都会注入长期记忆 prompt / tools，但不会把临时对话内容自动写成长期事实。
-
-## 部署步骤
-
-### 1. 准备运行环境
-
-- JDK 21
-- Maven 3.9+（或直接使用仓库自带 `./mvnw`）
-- Node.js 18+，npm 9+
-- PostgreSQL 15+，并安装 `pgvector`
-- MySQL 8.x（当 `app.chat-memory.type=mysql` 时需要）
-- Redis 7.x（当 `app.chat-memory.type=redis` 时需要）
-- Ollama（当使用本地模型 `ollama` profile 时需要）
-
-### 2. 修改配置
-
-默认配置文件在 [`src/main/resources/application.yml`](src/main/resources/application.yml) 和本地私有的 `application-local.yml`。
-
-因为安全性考虑，application-local.yml 中的敏感配置项没有提交到仓库，需要自行补充。
-模板如下
-```yml
-search-api:
-  api-key: "${SEARCH_API_KEY}"
-
-spring:
-  data:
-    redis:
-      host: "${REDIS_HOST:127.0.0.1}"
-      port: "${REDIS_PORT:6379}"
-
-  datasource:
-    url: "${POSTGRES_URL}"
-    username: "${POSTGRES_USERNAME}"
-    password: "${POSTGRES_PASSWORD}"
-    driver-class-name: org.postgresql.Driver
-
-  sql:
-    init:
-      mode: never
-
-  ai:
-    dashscope:
-      api-key: "${DASHSCOPE_API_KEY}"
-      chat:
-        options:
-          model: "qwen-plus"
-
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-  global-config:
-    banner: false
-
-app:
-  chat-memory:
-    # 可选值: file / mysql / redis
-    type: mysql
-    file-dir: "${CHAT_MEMORY_DIR:${user.dir}/tmp/chat-memory}"
-    redis:
-      key-prefix: "chat:memory:"
-  long-term-memory:
-    dir: "${LONG_TERM_MEMORY_DIR:${user.dir}/tmp/agent-memory}"
-  datasource:
-    mysql:
-      url: "${MYSQL_URL}"
-      username: "${MYSQL_USERNAME}"
-      password: "${MYSQL_PASSWORD}"
-      driver-class-name: com.mysql.cj.jdbc.Driver
-
-mail:
-  smtp:
-    host: "${MAIL_HOST}"
-    port: "${MAIL_PORT:465}"
-    username: "${MAIL_USERNAME}"
-    password: "${MAIL_PASSWORD}"
-    from: "${MAIL_FROM}"
-    ssl: true
-
-openclaw:
-  agent:
-    command: "${OPENCLAW_COMMAND}"
-    id: "main"
-    timeout-seconds: 120
-    session-prefix: "spring-ai-research"
-```
-
-主要看这几项：
-- `spring.ai.ollama.base-url`：Ollama 服务地址，默认 `http://localhost:11434`
-- `spring.datasource.*`：pgvector 使用的 PostgreSQL 连接
-- `app.datasource.mysql.*`：MySQL 会话记忆连接
-- `spring.data.redis.*`：Redis 连接
-- `app.long-term-memory.dir`：长期记忆根目录
-- `spring.ai.dashscope.api-key`：DashScope Key
-- `mail.smtp.*`：邮件工具配置
-- `openclaw.agent.*`：研究代理命令路径
-
-说明：
-- `src/main/resources/mcp-servers.json` 只保留可公开的示例配置
-- 其中的 `AMAP_MAPS_API_KEY` 是占位值，使用前请替换成你自己的 key 或改成私有本地配置
-
-### 3. 初始化依赖服务
-
-1. 创建 PostgreSQL 数据库
-2. 在 PostgreSQL 中安装 `vector` 扩展
-3. 如果使用 MySQL 会话记忆，创建数据库 `kewei_ai_agent`
-4. 如果使用 Redis 会话记忆，启动 Redis 实例
-5. 如果使用 Ollama，先拉取配置里对应模型
+Ollama 默认地址为 `http://localhost:11434`，模型名见 [`application.yml`](src/main/resources/application.yml)：
 
 ```bash
 ollama pull qwen3.5:35b
 ollama pull mxbai-embed-large:latest
 ```
-第二个命令用于下载 embedding 模型。
 
-如果需要本地 MCP 服务，再构建这两个子项目：
+`qwen3.5:35b` 对本机资源要求较高，可在本地配置中改成适合设备的模型；工具调用、图片理解等能力需要模型支持。默认 pgvector 维度为 `1024`，更换 embedding 模型时应同时检查维度与已有向量数据。
 
-```bash
-cd kewei-image-search-mcp-server
-./mvnw clean package -DskipTests
-cd ..
+创建 PostgreSQL 数据库，并由有权限的账号在该数据库启用扩展：
 
-cd kewei-image-generation-mcp-server
-./mvnw clean package -DskipTests
-cd ..
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-对应 jar 路径在 [`src/main/resources/mcp-servers.json`](src/main/resources/mcp-servers.json) 里配置。
+### 3. 添加本地配置
 
-### 4. 启动后端服务
+在 `src/main/resources/application-local.yml` 创建私有配置。默认启用 `local,ollama` profile；该本地文件被 Git 忽略，不要提交真实密钥或密码。
+
+以下是数据库与文件记忆配置起点，需要先设置对应环境变量：
+
+```yaml
+spring:
+  datasource:
+    url: ${POSTGRES_URL}
+    username: ${POSTGRES_USERNAME}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: never
+
+app:
+  chat-memory:
+    type: file
+    file-dir: ${CHAT_MEMORY_DIR:${user.dir}/tmp/chat-memory}
+  long-term-memory:
+    dir: ${LONG_TERM_MEMORY_DIR:${user.dir}/tmp/agent-memory}
+```
+
+`POSTGRES_URL` 使用 JDBC 格式，例如 `jdbc:postgresql://localhost:5432/kewei_ai_agent`。macOS / Linux 用 `export NAME='value'` 设置当前终端环境变量，PowerShell 用 `$env:NAME='value'`；启动后端的终端必须能读取这些变量。敏感值请在自己的环境中填写。
+
+按需在同一文件中补充：
+
+- MySQL 会话记忆：`app.chat-memory.type=mysql`，并设置 `app.datasource.mysql.url / username / password / driver-class-name`，驱动为 `com.mysql.cj.jdbc.Driver`。
+- Redis 会话记忆：`app.chat-memory.type=redis`，配置 `spring.data.redis.host / port` 及所需认证。
+- 邮件：`mail.smtp.host / port / username / password / from / ssl`。配置后邮件工具会实际发信，请使用专用测试账号和收件人。
+- OpenClaw：`openclaw.agent.command / id / timeout-seconds / session-prefix`。默认命令为 `openclaw`，需在后端进程的 PATH 中可用，并完成其自身配置。
+- 独立网页搜索工具：`search-api.api-key`；当前 Manus 调研路由使用 OpenClaw，并非自动调用该搜索工具。
+
+**MCP 需要单独检查。** [`mcp-servers.json`](src/main/resources/mcp-servers.json) 包含高德服务的占位 Key 和两个本地 JAR 的相对路径，不能原样当作可运行配置。先配置需要的服务及其凭据，再构建对应子项目；命令从仓库根目录执行：
+
+```bash
+./mvnw -f kewei-image-search-mcp-server/pom.xml package -DskipTests
+./mvnw -f kewei-image-generation-mcp-server/pom.xml package -DskipTests
+```
+
+PowerShell 将 `./mvnw` 换成 `.\mvnw.cmd`。上面跳过了测试，只用于构建。可将私有 MCP 配置放在已忽略的 `tmp/mcp-servers.json`，并在本地配置里设置 `spring.ai.mcp.client.stdio.servers-configuration: file:./tmp/mcp-servers.json`。保留的每个服务都应可启动；目前 `LoveApp` 还注入 MCP 的 `ToolCallbackProvider`，关闭整个 MCP 客户端前需同步检查 Bean 装配。
+
+### 4. 启动后端
+
+回到仓库根目录，保留前端终端，在另一个终端启动：
+
+macOS / Linux：
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-或者直接运行 jar：
+Windows PowerShell：
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+- 后端 API：`http://localhost:8123/api`
+- 健康检查：`http://localhost:8123/api/health`
+- Swagger：`http://localhost:8123/api/swagger-ui.html`
+
+先打开 `/health` 确认后端可达，再回到前端 `/console` 点击“立即检查”。健康检查成功只说明 HTTP 服务可用，不代表所有模型与工具均已验证。首次文档向量化或关键词增强可能较慢，请查看启动日志。
+
+## 使用示例
+
+以下是可以复制尝试的输入与操作步骤，不是预录的模型输出；实际结果取决于模型、工具配置与服务状态。
+
+### LoveApp：带上下文的对话
+
+1. 进入 `/chat`，选择 **LoveApp**，回复模式选择“事件流 sse_emitter”。
+2. 输入：`我和伴侣最近常因家务分工争执，想先梳理一次平和沟通的提纲。`
+3. 保持相同 `chatId`，继续问：`把刚才的提纲压缩成三句开场白。`
+4. 点击“新建 chatId”开始另一段会话。图片问答可先“上传图片”再发送问题，需要支持图片的模型。
+
+前端会记住最近使用的 `chatId`，但页面消息列表不等于服务端历史记录。会话记忆由后端所选实现保存；不要把切换或刷新页面当成完整历史恢复功能。
+
+### Manus：计划 → 补充信息 → 继续执行
+
+在 `/chat` 选择 **Manus**，尝试输入：
+
+```text
+帮我制定一个三天的 Spring AI 学习计划。请先用 AskUserQuestion 确认我每天可用的时间，再用 TodoWrite 列出任务，最后逐项给出练习建议。不需要联网调研或发送邮件。
+```
+
+当模型调用相关工具时：
+
+1. `question` 事件触发“需要补充信息”面板。
+2. 回答问题并点击“继续执行”，前端将答案提交到续跑接口。
+3. `todo` 事件更新“当前任务”进度，完成的任务快照会归档到聊天历史。
+4. `message` 事件追加输出，`done` 结束当前流；流失败时应检查报错后再重试。
+
+工具是否被调用由模型决定。Manus 的待回答状态和 Todo 快照保存在进程内存中，重启后端不能恢复未完成的任务；它们与文件 / MySQL / Redis 聊天记忆是两套机制。
+
+### API 示例
+
+接口均以 `http://localhost:8123/api` 为前缀：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/health` | HTTP 健康检查 |
+| GET | `/ai/love_app/chat/sync` | 同步聊天 |
+| GET | `/ai/love_app/chat/sse` | 普通流式聊天 |
+| GET | `/ai/love_app/chat/sse_emitter` | 带 `message` / `done` 命名事件的聊天 |
+| POST | `/ai/love_app/image/upload` | multipart 图片上传：`chatId`、`file` |
+| GET | `/ai/manus/chat` | 启动 Manus：`chatId`、`message` |
+| POST | `/ai/manus/chat/continue` | 提交答案并流式续跑 |
+
+macOS / Linux 流式调用示例：
 
 ```bash
+curl -N -G 'http://localhost:8123/api/ai/love_app/chat/sse_emitter' \
+  --data-urlencode 'chatId=readme-demo' \
+  --data-urlencode 'message=请帮我梳理一次平和沟通的提纲'
+```
+
+PowerShell 使用 `curl.exe`，避免与别名混淆：
+
+```powershell
+curl.exe -N -G "http://localhost:8123/api/ai/love_app/chat/sse_emitter" --data-urlencode "chatId=readme-demo" --data-urlencode "message=请帮我梳理一次平和沟通的提纲"
+```
+
+续跑接口的 JSON 形状如下，`answers` 的键必须替换为实际 `question` 事件返回的 ID：
+
+```json
+{
+  "chatId": "readme-demo",
+  "answers": {
+    "实际问题ID": "每天一小时"
+  }
+}
+```
+
+Todo 最小演示可调用 `/ai/love_app/chat/sse_emitter` 并传入 `option=todo-demo`；完整问题补充与 Todo 进度交互使用 Manus 链路。
+
+## 部署与多平台使用
+
+### 构建与 API 地址
+
+前端默认连接 `http://localhost:8123/api`。这是**浏览器所在设备**的 localhost；部署到服务器或用手机访问时，必须改为该设备能访问的后端地址。
+
+在 `kewei-ai-agent-frontend/.env.local` 配置，例如：
+
+```dotenv
+VITE_API_BASE_URL=https://your-api.example.com/api
+```
+
+这是示例地址，需要替换，保留 `/api` 前缀且不要在末尾加 `/`。若同源反向代理已把 `/api` 转发到后端，也可设置 `VITE_API_BASE_URL=/api`。当前 Vite 开发配置没有 API 代理，前后端分端口开发时仍使用完整后端 URL。
+
+`VITE_` 变量会进入公开前端产物，不能存密钥；它们在构建时注入，修改后需要重新构建：
+
+```bash
+cd kewei-ai-agent-frontend
+npm ci
+npm run build
+npm run preview
+```
+
+`npm run preview` 用于本地检查 `dist`，不是生产服务。部署静态产物时：
+
+- 将 `dist` 交给静态服务器，给 `/chat`、`/console` 等 history 路由配置回退到 `index.html`。
+- HTTPS 页面应连接 HTTPS API，避免浏览器混合内容拦截。
+- 反向代理要支持 SSE，检查缓冲和读超时设置。
+- 公网发布前补上鉴权、工具执行权限和限流，并收紧当前宽松的 CORS 配置。
+
+后端从仓库根目录打包：
+
+```bash
+./mvnw package -DskipTests
 java -jar target/kewei-ai-agent-0.0.1-SNAPSHOT.jar
 ```
 
-- 服务地址：`http://localhost:8123/api`
-- Swagger：`http://localhost:8123/api/swagger-ui.html`
+PowerShell 的打包命令用 `.\mvnw.cmd package -DskipTests`，`java -jar` 相同。该命令跳过测试，不代表验证通过。模型、数据库、MCP 和私有配置仍须就绪；文件输出、记忆和 MCP 相对路径取决于进程工作目录，建议从仓库根目录运行。
 
-### 5. 启动前端
+### 平台说明
 
-前端项目位于 [`kewei-ai-agent-frontend`](kewei-ai-agent-frontend)，默认通过 `VITE_API_BASE_URL` 指向后端，未配置时使用 `http://localhost:8123/api`。
+| 平台 | 运行方式与验证情况 |
+| --- | --- |
+| Linux | 本次已在 Linux 云环境验证选定后端单测、前端测试与构建；未验证完整外部服务联调 |
+| macOS | 使用 `./mvnw` 和 npm 命令；尚未进行 macOS 运行验证 |
+| Windows | 使用 PowerShell、`.\mvnw.cmd` 和 `curl.exe`；尚未进行 Windows 运行验证 |
+| 手机 / 平板 | 作为浏览器客户端访问已部署的前端；不在手机上运行 Java 后端或 Ollama |
+
+局域网调试可用 `npm run dev -- --host 0.0.0.0` 暴露前端，并将 API 地址设置为后端机器的局域网地址。仅在可信网络下使用，检查设备互通和防火墙；不要将开发服务器直接开放到公网。
+
+## 测试
+
+从仓库根目录运行后端核心回归测试（不调用真实模型）：
 
 ```bash
-cd kewei-ai-agent-frontend
-npm install
-npm run dev
+./mvnw "-Dtest=BaseAgentTest,ManusSession*Test,Memory*Test,FileOperationToolTest,ResourceDownloadToolTest,PdfConvertToolTest,OpenClawResearchToolTest,ShellOpenClawCommandRunnerTest" test
+./mvnw -DskipTests compile
 ```
 
+Windows 用 `.\mvnw.cmd` 替换 `./mvnw`。前端使用 Node 内置测试运行器，当前主要覆盖 SSE 解析与连接生命周期：
+
 ```bash
 cd kewei-ai-agent-frontend
-npm install
+npm ci
 npm test
 npm run build
 ```
 
-构建产物在 `kewei-ai-agent-frontend/dist`，可交给 Nginx 或任意静态资源服务托管。
+仓库也包含 `./mvnw test` 全量测试，但部分 `@SpringBootTest` 会启动应用并依赖真实模型、数据库、MCP 或网络；不能把以上核心测试通过等同于全量测试通过。PDF 转图测试会临时生成样本，验证子目录保留与同名冲突处理，不需要私人 PDF；邮件手工测试默认禁用。浏览器交互、真实模型回答及外部服务应另做联调验证。
 
-## 协作方式
+## 架构与代码导航
 
-- 日常开发请不要直接 push 到 `main`
-- 推荐流程：`issue -> branch -> commit -> test -> PR -> review -> merge`
-- 详细约束见 [CONTRIBUTING.md](CONTRIBUTING.md)
+```mermaid
+flowchart LR
+    UI[Vue 前端] --> API[AiController / SSE]
+    API --> LOVE[LoveApp]
+    API --> SESSION[ManusSessionService]
+    SESSION --> AGENT[KeweiManus / ToolCallAgent / ReActAgent]
+    SESSION --> STATE[ManusSessionStore]
+    LOVE --> MODEL[Ollama 模型]
+    AGENT --> MODEL
+    LOVE --> CHATMEM[File / MySQL / Redis 会话记忆]
+    LOVE --> RAG[RAG / pgvector]
+    LOVE --> MEMORY[长期记忆工具]
+    AGENT --> MEMORY
+    AGENT --> TOOLS[Todo / Question / 文件 / PDF / PPT / 邮件]
+    AGENT --> RESEARCH[OpenClaw 调研]
+    LOVE --> MCP[MCP 图片等服务]
+```
 
-## 后续可以继续扩展的方向
+- [应用层 LoveApp](src/main/java/com/kiwi/keweiaiagent/app/LoveApp.java)：文本、结构化输出、图片、RAG、Tools、MCP 与 Skills 的调用入口；并非所有方法都有独立前端按钮。
+- [ManusSessionService](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionService.java) / [ManusSessionStore](src/main/java/com/kiwi/keweiaiagent/agent/ManusSessionStore.java)：任务路由、工具子集、补充问题、Todo 快照与续跑。
+- [ChatMemoryConfig](src/main/java/com/kiwi/keweiaiagent/config/ChatMemoryConfig.java)：会话记忆切换；[RAG 配置](src/main/java/com/kiwi/keweiaiagent/rag)：文档加载、向量化与检索。
+- [ToolRegistration](src/main/java/com/kiwi/keweiaiagent/tools/ToolRegistration.java)：注册工具；[OpenClawResearchTool](src/main/java/com/kiwi/keweiaiagent/tools/OpenClawResearchTool.java)：调用 `openclaw agent --json` 并整理调研结果。
+- [MemoryToolSupport](src/main/java/com/kiwi/keweiaiagent/tools/MemoryToolSupport.java)：六个长期记忆工具的文件操作边界。默认 `tmp/agent-memory`，以 `MEMORY.md` 索引分类 Markdown 文件，拒绝越界和符号链接操作。
+- [前端 SSE 客户端](kewei-ai-agent-frontend/src/api/sse.js)：GET EventSource 与 POST fetch 流处理；[前端会话页面](kewei-ai-agent-frontend/src/views/ChatView.vue)：消息、补充问题与 Todo 展示。
 
-- 增加任务观测面板，展示 Agent 每一步的思考、工具调用和状态变化
-- 为长期记忆增加更细粒度的权限、审计和同步策略
-- 补充权限控制、限流、审计日志等更贴近生产的能力
-- 给不同任务域继续拆分独立 Agent 或独立 MCP 服务
-- 完善部署文档，把项目升级为可直接在线演示的作品
+```text
+kewei-ai-agent/
+├── src/main/java/com/kiwi/keweiaiagent/   # API、应用、Agent、配置、工具
+├── src/main/resources/                  # 配置、提示词、RAG 文档、Skills
+├── src/test/                            # 单测、集成与手工测试
+├── kewei-ai-agent-frontend/              # Vue 3 前端
+├── kewei-image-search-mcp-server/        # 图片搜索 MCP
+├── kewei-image-generation-mcp-server/    # 图片生成 MCP
+├── CONTRIBUTING.md                      # 协作规范
+└── PROCEDURES.md                        # 开发过程记录
+```
+
+## 常见问题
+
+- **`npm ci` 提示 engine 不匹配**：先检查 `node -v`，使用满足上述 Vite 版本要求的 Node。
+- **后端启动失败**：优先查看第一条异常，核对 JDK、PostgreSQL 连接、`vector` 扩展、Ollama 模型和 MCP 子进程；不要只看前端“网络异常”。
+- **页面打开但无法聊天**：确认 `/api/health` 可达、API 地址正确，再检查模型服务；手机上的 localhost 不会指向电脑。
+- **一直没有流式输出**：检查后端日志、模型加载情况、反向代理的 SSE 缓冲与超时；`/console` 可用于定位具体接口。
+- **续跑提示找不到会话**：检查 `chatId` 是否一致，以及后端是否重启；Manus 待执行状态不持久化。
+- **文件 / 记忆工具拒绝路径**：使用各工具输出目录内的相对路径，不使用绝对路径、`..` 越界路径或符号链接。
+
+## 参与开发
+
+请遵循 `issue → branch → commit → test → PR → review → merge`，正常开发不直接推送 `main`。提交前检查测试结果、文档、密钥与机器专属路径，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。完整开发记录见 [PROCEDURES.md](PROCEDURES.md)。
