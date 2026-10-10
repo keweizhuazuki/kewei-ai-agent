@@ -241,6 +241,12 @@ For a minimal Todo demo, pass `option=todo-demo` to `/ai/love_app/chat/sse_emitt
 
 [ToolTape](https://github.com/keweizhuazuki/tooltape) records and replays **tool callbacks**, not model responses or whole Agent runs. This opt-in adapter wraps the `allTools` and `memoryTools` beans. MCP providers and other operations outside those arrays are not intercepted; running the full application still requires its usual model and service setup.
 
+### Migrating existing tapes
+
+This revision pins hardened ToolTape core `442ce89` ([upstream change](https://github.com/keweizhuazuki/tooltape/pull/3)); the adapter API and runtime properties are unchanged. Credential-key checks normalize separators, including newlines and invisible characters. JSON, node counts, numeric expansion and tape sizes are bounded; input is preflighted before the live tool callback executes. These limits are not a transaction: an oversized result can still fail capture after a live tool has run.
+
+The `scalar-v2` capture-policy fingerprint intentionally rejects earlier v2 policy hashes. Review the capture policy and **re-record synthetic fixtures** with the new pin; do not edit fingerprints to bypass the mismatch. This does not make arbitrary captured output safe: the explicit output-capture warning below still applies.
+
 ### Build and test the pinned integration
 
 From the repository root, initialize the exact submodule revision pinned by this repository, then activate the Maven profile:
@@ -452,6 +458,8 @@ Implemented changes are linked to their PRs and commits; pending hosted validati
 | Verify native Windows/macOS tests and builds; close memory-prompt streams and use portable test paths | [#17](https://github.com/keweizhuazuki/kewei-ai-agent/pull/17) · `990a962`, `4ed9c37` |
 
 **ToolTape validation:** Added the opt-in ToolTape adapter and corrected `ToolCallAgent` dispatch to pass the available callbacks to Spring AI. Local Linux checks passed **90 default-build regression tests** and **22 profile-enabled tests plus packaging**, using pinned ToolTape revision `7d08b44`. A clean default build contains no ToolTape core or adapter classes. The [synthetic Agent regression](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java) exercises `think → act` with a deterministic local model stub and verifies replay causes no second tool side effect. The same backend/profile scope also passed in [hosted CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505).
+
+**Current ToolTape hardening revision:** Updated the opt-in pin to `442ce89e73cb67fcc294021de739a6de8ccc6128`, retaining the same adapter API. A clean local profile build passed **24 tests and packaging under a 384 MiB heap limit**. Both new adapter regressions failed against the old pin and pass with this update: three disguised credential keys stay omitted even when allowlisted, and a 13 MiB allowlisted JSON input exceeding the tape budget is rejected before the delegate runs. Hosted verification for this new pin is still pending; the initial `7d08b44` / 22-test results above remain historical evidence.
 
 **Frontend validation:** Fixed Todo decoding during continuation, stale questions after chat/application changes, Manus reply-mode initialization and active-response switching. [Run 38035118112](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112) at `d23f0ab` passed **90 backend tests, 22 ToolTape-profile tests with packaging, 43 Node tests, the frontend build and all 10 Chromium scenarios**. Desktop and mobile chat captures were visually reviewed. Browser responses use synthetic API/SSE fixtures, not a live model.
 

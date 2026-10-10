@@ -114,6 +114,47 @@ class ToolTapeSessionTest {
     }
 
     @Test
+    void credentialNamesWithLineBreaksAndInvisibleCharactersStayOmittedEvenIfAllowlisted() throws Exception {
+        Path path = directory.resolve("disguised-credentials.tape");
+        CapturePolicy policy = CapturePolicy.allow(
+                Set.of("city", "password\n", "api\nkey", "api\u200b_key"), Set.of());
+        String input = Json.write(Map.of(
+                "city", "Paris",
+                "password\n", "private-password",
+                "api\nkey", "private-line-break-key",
+                "api\u200b_key", "private-invisible-key"));
+        var calls = new AtomicInteger();
+        try (ToolTapeSession recording = ToolTapeSession.record(path, policy)) {
+            recording.wrap(callback("forecast", calls, "private-output")).call(input);
+        }
+        assertEquals(1, calls.get());
+        Tape tape = Tape.read(path);
+        assertEquals(Map.of("city", "Paris"), Json.object(tape.events().getFirst().input()));
+        assertEquals(Map.of(), Json.object(tape.events().getFirst().result()));
+        assertFalse(tape.toString().contains("private-"));
+    }
+
+    @Test
+    void inputThatFitsJsonButExceedsEncodedTapeBudgetFailsBeforeInvokingDelegate() throws Exception {
+        // ASCII needs no JSON escaping, but base64 expansion pushes this past the tape limit.
+        String input = "{\"city\":\"" + "x".repeat(13 * 1024 * 1024) + "\"}";
+        assertTrue(input.length() < 16 * 1024 * 1024);
+        assertTrue(4L * ((input.length() + 2) / 3) > Tape.MAX_BYTES);
+        assertDoesNotThrow(() -> Json.object(input), "The fixture must fit the JSON limit");
+        var calls = new AtomicInteger();
+        CapturePolicy policy = CapturePolicy.allow(Set.of("city"), Set.of());
+        try (ToolTapeSession recording = ToolTapeSession.record(directory.resolve("oversized.tape"), policy)) {
+            ToolCallback wrapped = recording.wrap(callback("forecast", calls, "live"));
+            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> wrapped.call(input));
+            IOException cause = assertInstanceOf(IOException.class, failure.getCause());
+            assertAll(
+                    () -> assertEquals(0, calls.get(),
+                            "Encoded tape capacity must be checked before executing the delegate"),
+                    () -> assertTrue(cause.getMessage().contains("tool was not executed")));
+        }
+    }
+
+    @Test
     void mismatchNeverFallsBackToLiveCallback() throws Exception {
         Path path = directory.resolve("mismatch.tape");
         writeFixture(path);

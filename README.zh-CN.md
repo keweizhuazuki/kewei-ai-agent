@@ -241,6 +241,12 @@ Todo 最小演示可调用 `/ai/love_app/chat/sse_emitter` 并传入 `option=tod
 
 [ToolTape](https://github.com/keweizhuazuki/tooltape)录制与回放的是**工具回调**，不是模型回答或整个 Agent 运行。此可选适配器包装 `allTools` 与 `memoryTools` Bean；MCP Provider 和数组之外的操作不在拦截范围内。完整应用仍需要原有模型与依赖服务。
 
+### 迁移已有记录
+
+本次固定到加固后的 ToolTape 核心 `442ce89`（[上游变更](https://github.com/keweizhuazuki/tooltape/pull/3)），适配器 API 与运行时属性不变。凭据字段名检查会规范化分隔符，包括换行与不可见字符；JSON、节点数量、数字展开与记录大小均有边界，输入在真实工具回调执行前预检。这些限制不提供事务回滚：输出过大仍可能在真实工具已经运行后导致录制失败。
+
+`scalar-v2` 捕获策略指纹会有意拒绝旧版 v2 策略哈希。请审查捕获策略，并用新版本**重新录制合成测试数据**，不要修改指纹绕过不匹配检查。这不代表任意输出字符串已安全脱敏，下方显式捕获输出的风险提示仍适用。
+
 ### 构建并测试固定版本
 
 从仓库根目录初始化仓库锁定版本的子模块，再启用 Maven profile：
@@ -454,6 +460,8 @@ kewei-ai-agent/
 | 验证 Windows/macOS 原生测试与构建，关闭记忆提示词输入流并修正测试路径 | [#17](https://github.com/keweizhuazuki/kewei-ai-agent/pull/17) · `990a962`, `4ed9c37` |
 
 **ToolTape 验证：** 新增可选 ToolTape 适配器，并修正 `ToolCallAgent` 调度，将可用回调传给 Spring AI。基于固定 ToolTape 提交 `7d08b44`，Linux 本地已通过 **90 项默认构建回归测试**、**22 项启用 profile 的测试及打包**；干净默认构建不含 ToolTape 核心或适配器类。[合成 Agent 回归](src/tooltape-test/java/com/kiwi/keweiaiagent/tooltape/ToolTapeAgentReplayTest.java)使用确定性本地模型 stub 验证 `think → act`，确认回放不会再次触发工具副作用。相同后端/profile 范围也已通过[托管 CI](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38034533505)。
+
+**本次 ToolTape 加固修订：** 将可选集成固定到 `442ce89e73cb67fcc294021de739a6de8ccc6128`，适配器 API 不变。Linux 本地干净 profile 构建在 **384 MiB 堆限制下通过 24 项测试及打包**。新增的两项适配器回归均在旧版本失败、新版本通过：3 种伪装的凭据字段名即使纳入白名单也不写入记录；超过记录预算的 13 MiB 白名单 JSON 输入在真实委托工具执行前即被拒绝。新固定版本的托管验证仍待完成；上方初次 `7d08b44` / 22 项测试记录保留为历史依据。
 
 **前端验证：** 修复续跑 Todo 解码、会话/应用切换后残留问题、Manus 回复模式初始化与回复期间切换问题。提交 `d23f0ab` 的[运行 38035118112](https://github.com/keweizhuazuki/kewei-ai-agent/actions/runs/38035118112)已通过 **90 项后端测试、22 项 ToolTape profile 测试及打包、43 项 Node 测试、前端构建和全部 10 个 Chromium 场景**。桌面与移动会话截图已实际检查；浏览器响应使用合成 API/SSE 数据，不是真实模型输出。
 
