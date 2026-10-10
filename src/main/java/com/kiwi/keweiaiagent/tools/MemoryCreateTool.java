@@ -30,7 +30,7 @@ public class MemoryCreateTool {
             if (Files.exists(path)) {
                 return "Error creating memory: memory path already exists: " + support.display(path);
             }
-            support.writeFile(path, content);
+            support.createFile(path, content);
             return "Created memory file: " + support.display(path);
         } catch (Exception e) {
             return "Error creating memory: " + e.getMessage();

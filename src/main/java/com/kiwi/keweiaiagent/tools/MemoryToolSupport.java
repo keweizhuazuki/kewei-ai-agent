@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -108,6 +108,12 @@ final class MemoryToolSupport {
         Files.writeString(filePath, content == null ? "" : content);
     }
 
+    void createFile(Path filePath, String content) throws IOException {
+        ensureParentDirectory(filePath);
+        Files.writeString(filePath, content == null ? "" : content,
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+    }
+
     List<String> readLines(Path filePath) throws IOException {
         if (!Files.exists(filePath) || Files.isDirectory(filePath)) {
             throw new IllegalArgumentException("Memory file does not exist: " + display(filePath));
@@ -137,6 +143,7 @@ final class MemoryToolSupport {
     }
 
     void deleteRecursively(Path path) throws IOException {
+        rejectMemoryRoot(path);
         if (!Files.exists(path)) {
             throw new IllegalArgumentException("Memory path does not exist: " + display(path));
         }
@@ -148,10 +155,21 @@ final class MemoryToolSupport {
     }
 
     void move(Path source, Path target) throws IOException {
+        rejectMemoryRoot(source);
+        rejectMemoryRoot(target);
         if (!Files.exists(source)) {
             throw new IllegalArgumentException("Memory path does not exist: " + display(source));
         }
+        if (Files.exists(target)) {
+            throw new IllegalArgumentException("Memory target already exists: " + display(target));
+        }
         ensureParentDirectory(target);
-        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(source, target);
+    }
+
+    private void rejectMemoryRoot(Path path) {
+        if (memoriesRootPath.equals(path)) {
+            throw new IllegalArgumentException("Cannot delete or rename the memory root");
+        }
     }
 }

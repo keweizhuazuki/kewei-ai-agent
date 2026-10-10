@@ -259,6 +259,7 @@ kewei-ai-agent
 - 当前支持 `MemoryView`、`MemoryCreate`、`MemoryStrReplace`、`MemoryInsert`、`MemoryDelete`、`MemoryRename`。
 - memory tools 受 `app.long-term-memory.dir` 指定目录约束，默认写入 `tmp/agent-memory`。
 - memory tools 拒绝操作目录内的符号链接，避免通过链接读写记忆目录之外的文件。
+- 创建和重命名不会覆盖已有记忆；删除和重命名不能操作记忆根目录。
 - `LoveApp` 和 `KeweiManus` 都会注入长期记忆 prompt / tools，但不会把临时对话内容自动写成长期事实。
 
 ## 部署步骤
