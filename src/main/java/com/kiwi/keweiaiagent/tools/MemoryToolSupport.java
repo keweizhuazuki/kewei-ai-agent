@@ -18,23 +18,34 @@ final class MemoryToolSupport {
     private final Path memoriesRootPath;
 
     MemoryToolSupport(Path memoriesRootPath) {
-        this.memoriesRootPath = memoriesRootPath.toAbsolutePath().normalize();
         try {
-            Files.createDirectories(this.memoriesRootPath);
+            Files.createDirectories(memoriesRootPath);
+            this.memoriesRootPath = memoriesRootPath.toRealPath();
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to initialize memories root directory", e);
         }
     }
 
     Path resolve(String relativePath) {
-        if (relativePath == null || relativePath.isBlank() || ".".equals(relativePath.trim())) {
-            return memoriesRootPath;
-        }
-        Path resolved = memoriesRootPath.resolve(relativePath.trim()).normalize();
+        String path = relativePath == null || relativePath.isBlank() ? "." : relativePath.trim();
+        Path resolved = memoriesRootPath.resolve(path).normalize();
         if (!resolved.startsWith(memoriesRootPath)) {
             throw new IllegalArgumentException("Path '" + relativePath + "' is outside memory root");
         }
+        // 不能只检查规范化后的路径前缀：符号链接可能指向记忆目录之外。
+        Path current = memoriesRootPath;
+        rejectSymbolicLink(current);
+        for (Path component : memoriesRootPath.relativize(resolved)) {
+            current = current.resolve(component);
+            rejectSymbolicLink(current);
+        }
         return resolved;
+    }
+
+    private void rejectSymbolicLink(Path path) {
+        if (Files.isSymbolicLink(path)) {
+            throw new IllegalArgumentException("Symbolic links are not allowed in memory paths: " + display(path));
+        }
     }
 
     String display(Path path) {
