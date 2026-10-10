@@ -180,6 +180,7 @@ flowchart TB
   研究任务委派给 OpenClaw。
 - `MemoryView` / `MemoryCreate` / `MemoryStrReplace` / `MemoryInsert` / `MemoryDelete` / `MemoryRename`
   六个长期记忆工具，用于查看、创建、替换、插入、删除、重命名 memory 文件。
+- 文件读写与资源下载限定在各自输出目录内，支持相对路径子目录，拒绝绝对路径、越界路径和符号链接。
 - [`kewei-image-search-mcp-server`](kewei-image-search-mcp-server)
   图片搜索 MCP 服务。
 - [`kewei-image-generation-mcp-server`](kewei-image-generation-mcp-server)

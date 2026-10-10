@@ -1,6 +1,5 @@
 package com.kiwi.keweiaiagent.tools;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpUtil;
 import com.kiwi.keweiaiagent.constant.FileConstant;
@@ -8,10 +7,21 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 @Component
 public class ResourceDownloadTool {
 
-    private final String DOWNLOAD_DIR = FileConstant.File_SAVE_DIR + "/download";
+    private final FileToolPathSupport paths;
+
+    public ResourceDownloadTool() {
+        this(Path.of(FileConstant.File_SAVE_DIR, "download"));
+    }
+
+    ResourceDownloadTool(Path directory) {
+        this.paths = new FileToolPathSupport(directory);
+    }
 
     @Tool(description = "Download a resource from URL to local download directory",returnDirect = false)
     public String downloadResource(
@@ -26,9 +36,9 @@ public class ResourceDownloadTool {
         }
 
         try {
-            FileUtil.mkdir(DOWNLOAD_DIR);
-            String targetPath = DOWNLOAD_DIR + "/" + fileName;
-            HttpUtil.downloadFile(url, targetPath);
+            Path targetPath = paths.resolveFile(fileName);
+            Files.createDirectories(targetPath.getParent());
+            HttpUtil.downloadFile(url, targetPath.toFile());
             return "Resource downloaded successfully to: " + targetPath;
         } catch (Exception e) {
             return "Error downloading resource: " + e.getMessage();
