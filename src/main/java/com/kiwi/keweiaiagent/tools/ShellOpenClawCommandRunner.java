@@ -35,27 +35,39 @@ public class ShellOpenClawCommandRunner implements OpenClawCommandRunner {
         log.info("Starting OpenClaw command. cwd={}, timeoutSeconds={}, command={}",
                 workingDirectory.getAbsolutePath(), timeout.toSeconds(), command);
         Process process = processBuilder.start();
-        CompletableFuture<String> stdoutFuture = readStreamAsync(process.getInputStream());
-        CompletableFuture<String> stderrFuture = readStreamAsync(process.getErrorStream());
-        boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        if (!finished) {
-            process.destroyForcibly();
+        try {
+            CompletableFuture<String> stdoutFuture = readStreamAsync(process.getInputStream());
+            CompletableFuture<String> stderrFuture = readStreamAsync(process.getErrorStream());
+            boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (!finished) {
+                terminateProcess(process);
+                String stdout = awaitStream(stdoutFuture);
+                String stderr = awaitStream(stderrFuture);
+                long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+                log.warn("OpenClaw command timed out after {} ms. command={}, stdoutPreview={}, stderrPreview={}",
+                        elapsedMs, command, preview(stdout), preview(stderr));
+                return new CommandResult(124, stdout, firstNonBlank(stderr, "Timed out after " + timeout.toSeconds() + " seconds"));
+            }
+            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
             String stdout = awaitStream(stdoutFuture);
             String stderr = awaitStream(stderrFuture);
-            long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-            log.warn("OpenClaw command timed out after {} ms. command={}, stdoutPreview={}, stderrPreview={}",
-                    elapsedMs, command, preview(stdout), preview(stderr));
-            return new CommandResult(124, stdout, firstNonBlank(stderr, "Timed out after " + timeout.toSeconds() + " seconds"));
+            log.info("OpenClaw command finished. exitCode={}, elapsedMs={}, stdoutPreview={}, stderrPreview={}",
+                    process.exitValue(),
+                    elapsedMs,
+                    preview(stdout),
+                    preview(stderr));
+            return new CommandResult(process.exitValue(), stdout, stderr);
+        } finally {
+            // 调用线程取消时也必须释放子进程，避免研究任务在后台继续运行。
+            if (process.isAlive()) {
+                terminateProcess(process);
+            }
         }
-        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
-        String stdout = awaitStream(stdoutFuture);
-        String stderr = awaitStream(stderrFuture);
-        log.info("OpenClaw command finished. exitCode={}, elapsedMs={}, stdoutPreview={}, stderrPreview={}",
-                process.exitValue(),
-                elapsedMs,
-                preview(stdout),
-                preview(stderr));
-        return new CommandResult(process.exitValue(), stdout, stderr);
+    }
+
+    private void terminateProcess(Process process) {
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
     }
 
     private CompletableFuture<String> readStreamAsync(InputStream inputStream) {
